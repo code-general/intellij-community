@@ -13,9 +13,7 @@ import com.intellij.openapi.keymap.KeymapManagerListener
 import com.intellij.openapi.project.Project
 import org.intellij.lang.annotations.Language
 import training.commands.kotlin.TaskContext
-import training.learn.CourseManager
 import training.learn.interfaces.Lesson
-import training.learn.interfaces.LessonType
 import training.learn.lesson.kimpl.KLesson
 import training.learn.lesson.kimpl.LessonExecutor
 import training.learn.lesson.kimpl.OpenPassedContext
@@ -63,12 +61,13 @@ class LessonManager {
   }
 
   internal fun openLessonPassed(lesson: KLesson, project: Project) {
+    val learnPanel = learnPanel ?: error("No learn panel")
     initLesson(null, lesson)
-    learnPanel?.scrollToNewMessages = false
+    learnPanel.scrollToNewMessages = false
     OpenPassedContext(project).apply(lesson.lessonContent)
-    learnPanel?.scrollRectToVisible(Rectangle(0, 0, 1, 1))
-    learnPanel?.makeNextButtonSelected()
-    learnPanel?.learnToolWindow?.showGotItAboutRestart()
+    learnPanel.scrollRectToVisible(Rectangle(0, 0, 1, 1))
+    learnPanel.makeNextButtonSelected()
+    learnPanel.learnToolWindow?.showGotItAboutRestart()
   }
 
   internal fun initDslLesson(editor: Editor?, cLesson: Lesson, lessonExecutor: LessonExecutor) {
@@ -178,13 +177,7 @@ class LessonManager {
     shownRestoreNotification = notification
   }
 
-  fun cleanUpBeforeLesson(project: Project) {
-
-    for (lesson in CourseManager.instance.lessonsForModules.filter { it.lessonType == LessonType.PROJECT }) {
-      lesson.cleanUp(project)
-    }
-  }
-
+  fun lessonShouldBeOpenedCompleted(lesson: Lesson): Boolean = lesson.passed && currentLesson != lesson
 
   companion object {
     @Volatile
