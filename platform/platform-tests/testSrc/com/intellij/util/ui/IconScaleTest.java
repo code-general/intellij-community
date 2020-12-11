@@ -11,10 +11,7 @@ import com.intellij.ui.DeferredIconImpl;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.RestoreScaleRule;
 import com.intellij.ui.RetrievableIcon;
-import com.intellij.ui.scale.JBUIScale;
-import com.intellij.ui.scale.ScaleContext;
-import com.intellij.ui.scale.ScaleContextAware;
-import com.intellij.ui.scale.UserScaleContext;
+import com.intellij.ui.scale.*;
 import com.intellij.util.IconUtil;
 import com.intellij.util.ui.paint.ImageComparator;
 import org.jetbrains.annotations.NotNull;
@@ -27,6 +24,8 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.net.MalformedURLException;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static com.intellij.ui.scale.DerivedScaleType.DEV_SCALE;
 import static com.intellij.ui.scale.DerivedScaleType.EFF_USR_SCALE;
@@ -106,10 +105,10 @@ public class IconScaleTest extends BareTestFixtureTestCase {
     return new CachedImageIcon(new File(getIconPath()).toURI().toURL(), false);
   }
 
-  private static void test(@NotNull Icon icon, @NotNull UserScaleContext iconContext) {
-    ((ScaleContextAware)icon).updateScaleContext(iconContext);
+  private static void test(@NotNull Icon icon, @NotNull UserScaleContext iconUserContext) {
+    ((ScaleContextAware)icon).updateScaleContext(iconUserContext);
 
-    ScaleContext context = ScaleContext.create(iconContext);
+    ScaleContext iconContext = ScaleContext.create(iconUserContext);
 
     /*
      * (A) normal conditions
@@ -117,11 +116,11 @@ public class IconScaleTest extends BareTestFixtureTestCase {
 
     //noinspection UnnecessaryLocalVariable
     Icon iconA = icon;
-    double usrSize2D = context.apply(ICON_BASE_SIZE, EFF_USR_SCALE);
+    double usrSize2D = iconContext.apply(ICON_BASE_SIZE, EFF_USR_SCALE);
     int usrSize = (int)Math.round(usrSize2D);
-    int devSize = (int)Math.round(context.apply(usrSize2D, DEV_SCALE));
+    int devSize = (int)Math.round(iconContext.apply(usrSize2D, DEV_SCALE));
 
-    assertIcon(iconA, iconContext, usrSize, devSize);
+    assertIcon(iconA, iconContext, usrSize, devSize, "Test (A) normal conditions");
 
     /*
      * (B) override scale
@@ -129,48 +128,72 @@ public class IconScaleTest extends BareTestFixtureTestCase {
     if (!(icon instanceof RetrievableIcon)) { // RetrievableIcon may return a copy of its wrapped icon and we may fail to override scale in the origin.
       Icon iconB = IconUtil.overrideScale(IconLoader.copy(icon, null, true), USR_SCALE.of(ICON_OVER_USR_SCALE));
 
-      usrSize2D = ICON_BASE_SIZE * ICON_OVER_USR_SCALE * context.getScale(OBJ_SCALE);
+      usrSize2D = ICON_BASE_SIZE * ICON_OVER_USR_SCALE * iconContext.getScale(OBJ_SCALE);
       usrSize = (int)Math.round(usrSize2D);
-      devSize = (int)Math.round(context.apply(usrSize2D, DEV_SCALE));
+      devSize = (int)Math.round(iconContext.apply(usrSize2D, DEV_SCALE));
 
-      assertIcon(iconB, iconContext, usrSize, devSize);
+      assertIcon(iconB, iconContext, usrSize, devSize, "Test (B) override scale");
     }
 
     /*
      * (C) scale icon
      */
+    Function<ScaleContext, Pair<Integer /*scaled user size*/, Integer /*scaled dev size*/>> calcScales =
+      (ctx) -> {
+        double scaledUsrSize2D = ctx.apply(ICON_BASE_SIZE, EFF_USR_SCALE);
+        int scaledUsrSize = (int)Math.round(scaledUsrSize2D);
+        int scaledDevSize = (int)Math.round(iconContext.apply(scaledUsrSize2D, DEV_SCALE));
+        return Pair.create(scaledUsrSize, scaledDevSize);
+      };
+
     Icon iconC = IconUtil.scale(icon, null, ICON_OBJ_SCALE);
 
     assertThat(iconC).isNotSameAs(icon);
     assertThat(((ScaleContextAware)icon).getScaleContext()).isEqualTo(iconContext);
 
-    usrSize2D = context.apply(ICON_BASE_SIZE, EFF_USR_SCALE);
-    double scaledUsrSize2D = usrSize2D * ICON_OBJ_SCALE;
-    int scaledUsrSize = (int)Math.round(scaledUsrSize2D);
-    int scaledDevSize = (int)Math.round(context.apply(scaledUsrSize2D, DEV_SCALE));
+    ScaleContext contextC = ScaleContext.create(OBJ_SCALE.of(ICON_OBJ_SCALE));
+    Pair<Integer, Integer> scales = calcScales.apply(contextC);
 
-    assertIcon(iconC, iconContext, scaledUsrSize, scaledDevSize);
+    assertIcon(iconC, contextC, scales.first, scales.second, "Test (C) scale icon");
 
     // Additionally check that the original image hasn't changed after scaling
-    Pair<BufferedImage, Graphics2D> pair = createImageAndGraphics(context.getScale(DEV_SCALE), icon.getIconWidth(), icon.getIconHeight());
+    Pair<BufferedImage, Graphics2D> pair = createImageAndGraphics(iconContext.getScale(DEV_SCALE), icon.getIconWidth(), icon.getIconHeight());
     BufferedImage iconImage = pair.first;
     Graphics2D g2d = pair.second;
 
     icon.paintIcon(null, g2d, 0, 0);
 
-    BufferedImage goldImage = loadImage(getIconPath(), context);
+    BufferedImage goldImage = loadImage(getIconPath(), iconContext);
 
     ImageComparator.compareAndAssert(
       new ImageComparator.AASmootherComparator(0.1, 0.1, new Color(0, 0, 0, 0)), goldImage, iconImage, null);
+
+    /*
+     * (D) scale icon in iconContext
+     */
+    Consumer<Float> scaleInContext = scale -> {
+      ScaleContext contextD = ScaleContext.create(OBJ_SCALE.of(scale));
+      Icon iconD = IconUtil.scale(icon, contextD);
+
+      // the new instance is returned
+      assertThat(iconD).isNotSameAs(icon);
+      // the original icon's iconContext has not changed
+      assertThat(((ScaleContextAware)icon).getScaleContext()).isEqualTo(iconContext);
+
+      Pair<Integer, Integer> _scales = calcScales.apply(contextD);
+      assertIcon(iconD, contextD, _scales.first, _scales.second, "Test (D) scale icon in iconContext");
+    };
+
+    scaleInContext.accept(1f);
+    scaleInContext.accept(1.5f);
   }
 
-  private static void assertIcon(@NotNull Icon icon, @NotNull UserScaleContext iconContext, int usrSize, int devSize) {
-    assertThat(icon.getIconWidth()).describedAs("unexpected icon user width (ctx: " + iconContext + ")").isEqualTo(usrSize);
-    assertThat(icon.getIconHeight()).describedAs("unexpected icon user height (ctx: " + iconContext + ")").isEqualTo(usrSize);
+  private static void assertIcon(@NotNull Icon icon, @NotNull ScaleContext ctx, int usrSize, int devSize, @NotNull String testDescription) {
+    assertThat(icon.getIconWidth()).describedAs(testDescription + ": unexpected icon user width").isEqualTo(usrSize);
+    assertThat(icon.getIconHeight()).describedAs(testDescription + ": unexpected icon user height").isEqualTo(usrSize);
 
-    ScaleContext context = ScaleContext.create(iconContext);
-    assertThat(ImageUtil.getRealWidth(IconLoader.toImage(icon, context))).describedAs("unexpected icon real width (ctx: " + iconContext + ")").isEqualTo(devSize);
-    assertThat(ImageUtil.getRealHeight(IconLoader.toImage(icon, context))).describedAs("unexpected icon real height (ctx: " + iconContext + ")").isEqualTo(devSize);
+    assertThat(ImageUtil.getRealWidth(IconLoader.toImage(icon, ctx))).describedAs(testDescription + ": unexpected icon real width").isEqualTo(devSize);
+    assertThat(ImageUtil.getRealHeight(IconLoader.toImage(icon, ctx))).describedAs(testDescription + ": unexpected icon real height").isEqualTo(devSize);
   }
 
   private static String getIconPath() {

@@ -2,7 +2,6 @@
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.application.options.EditorFontsConstants;
-import com.intellij.codeInsight.hint.EditorFragmentComponent;
 import com.intellij.diagnostic.Dumpable;
 import com.intellij.ide.*;
 import com.intellij.ide.dnd.DnDManager;
@@ -3638,14 +3637,14 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
 
     private void createComposedString(int composedIndex, @NotNull AttributedCharacterIterator text) {
-      StringBuffer strBuf = new StringBuffer();
+      StringBuilder strBuf = new StringBuilder();
 
       // create attributed string with no attributes
       for (char c = text.setIndex(composedIndex); c != CharacterIterator.DONE; c = text.next()) {
         strBuf.append(c);
       }
 
-      composedText = new String(strBuf);
+      composedText = strBuf.toString();
     }
 
     private void setInputMethodCaretPosition(@NotNull InputMethodEvent e) {
@@ -4322,14 +4321,24 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
                         delegate == null ? null : delegate.getConsoleFontPreferences());
 
       myFontsMap = new EnumMap<>(EditorFontType.class);
-      myFontsMap.put(EditorFontType.PLAIN, new Font(editorFontName, Font.PLAIN, editorFontSize));
-      myFontsMap.put(EditorFontType.BOLD, new Font(editorFontName, Font.BOLD, editorFontSize));
-      myFontsMap.put(EditorFontType.ITALIC, new Font(editorFontName, Font.ITALIC, editorFontSize));
-      myFontsMap.put(EditorFontType.BOLD_ITALIC, new Font(editorFontName, Font.BOLD | Font.ITALIC, editorFontSize));
-      myFontsMap.put(EditorFontType.CONSOLE_PLAIN, new Font(consoleFontName, Font.PLAIN, consoleFontSize));
-      myFontsMap.put(EditorFontType.CONSOLE_BOLD, new Font(consoleFontName, Font.BOLD, consoleFontSize));
-      myFontsMap.put(EditorFontType.CONSOLE_ITALIC, new Font(consoleFontName, Font.ITALIC, consoleFontSize));
-      myFontsMap.put(EditorFontType.CONSOLE_BOLD_ITALIC, new Font(consoleFontName, Font.BOLD | Font.ITALIC, consoleFontSize));
+      setFont(EditorFontType.PLAIN, editorFontName, Font.PLAIN, editorFontSize, myFontPreferences);
+      setFont(EditorFontType.BOLD, editorFontName, Font.BOLD, editorFontSize, myFontPreferences);
+      setFont(EditorFontType.ITALIC, editorFontName, Font.ITALIC, editorFontSize, myFontPreferences);
+      setFont(EditorFontType.BOLD_ITALIC, editorFontName, Font.BOLD | Font.ITALIC, editorFontSize, myFontPreferences);
+      setFont(EditorFontType.CONSOLE_PLAIN, consoleFontName, Font.PLAIN, consoleFontSize, myConsoleFontPreferences);
+      setFont(EditorFontType.CONSOLE_BOLD, consoleFontName, Font.BOLD, consoleFontSize, myConsoleFontPreferences);
+      setFont(EditorFontType.CONSOLE_ITALIC, consoleFontName, Font.ITALIC, consoleFontSize, myConsoleFontPreferences);
+      setFont(EditorFontType.CONSOLE_BOLD_ITALIC, consoleFontName, Font.BOLD | Font.ITALIC, consoleFontSize, myConsoleFontPreferences);
+    }
+
+    private void setFont(EditorFontType fontType,
+                         String familyName,
+                         int style,
+                         int fontSize,
+                         FontPreferences fontPreferences) {
+      myFontsMap.put(fontType,
+                     FontFamilyService.getFont(familyName, fontPreferences.getRegularSubFamily(), fontPreferences.getBoldSubFamily(),
+                                               style, fontSize));
     }
 
     private void updatePreferences(@NotNull FontPreferencesImpl preferences,
@@ -4348,6 +4357,8 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
         }
       }
       preferences.setUseLigatures(delegatePreferences != null && delegatePreferences.useLigatures());
+      preferences.setRegularSubFamily(delegatePreferences == null ? null : delegatePreferences.getRegularSubFamily());
+      preferences.setBoldSubFamily(delegatePreferences == null ? null : delegatePreferences.getBoldSubFamily());
     }
 
     private void reinitFontsAndSettings() {

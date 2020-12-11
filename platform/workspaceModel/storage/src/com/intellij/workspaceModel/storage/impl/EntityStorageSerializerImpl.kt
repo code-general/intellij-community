@@ -52,11 +52,16 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
     kryo.addDefaultSerializer(VirtualFileUrl::class.java, object : Serializer<VirtualFileUrl>(false, true) {
       override fun write(kryo: Kryo, output: Output, obj: VirtualFileUrl) {
         // TODO Write IDs only
-        output.writeString(obj.url)
+        val fileUrl = obj.url
+        if (fileUrl.isEmpty()) error("Cannot serialize workspace model because of disposed file pointers")
+        output.writeString(fileUrl)
       }
 
-      override fun read(kryo: Kryo, input: Input, type: Class<VirtualFileUrl>): VirtualFileUrl =
-        virtualFileManager.fromUrl(input.readString())
+      override fun read(kryo: Kryo, input: Input, type: Class<VirtualFileUrl>): VirtualFileUrl {
+        val url = input.readString()
+        if (url.isNullOrEmpty()) error("Cannot deserialize workspace model because of broken file pointers")
+        return virtualFileManager.fromUrl(url)
+      }
     })
 
     kryo.register(EntityId::class.java, object : Serializer<EntityId>(false, true) {
@@ -241,11 +246,7 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
     if (entity is VirtualFileUrl) return
     if (entity is Enum<*>) return
 
-    if (entity is WorkspaceEntityData<*>) {
-      // lateinit property seems not captured by fields
-      recursiveClassFinder(kryo, entity.entitySource, simpleClasses, objectClasses)
-    }
-    jClass.declaredFields.forEach {
+    ReflectionUtil.collectFields(jClass).forEach {
       val retType = it.type.name
 
       if ((retType.startsWith("kotlin") || retType.startsWith("java"))
@@ -293,11 +294,11 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
     return false
   }
 
-  override fun serializeCache(stream: OutputStream, storage: WorkspaceEntityStorage) {
+  override fun serializeCache(stream: OutputStream, storage: WorkspaceEntityStorage): SerializationResult {
     storage as WorkspaceEntityStorageImpl
 
     val output = Output(stream, KRYO_BUFFER_SIZE)
-    try {
+    return try {
       val kryo = createKryo()
 
       // Save version
@@ -329,6 +330,12 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
 
       kryo.writeClassAndObject(output, storage.indexes.entitySourceIndex)
       kryo.writeClassAndObject(output, storage.indexes.persistentIdIndex)
+
+      SerializationResult.Success
+    }
+    catch (e: Exception) {
+      output.clear()
+      SerializationResult.Fail(e.message)
     }
     finally {
       output.flush()

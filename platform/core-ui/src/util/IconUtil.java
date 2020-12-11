@@ -40,6 +40,7 @@ import static com.intellij.ui.scale.ScaleType.USR_SCALE;
  */
 @ApiStatus.NonExtendable
 public class IconUtil {
+  public static final Key<Integer> ICON_FLAG_IGNORE_MASK = new Key<>("ICON_FLAG_IGNORE_MASK");
   private static final Key<Boolean> PROJECT_WAS_EVER_INITIALIZED = Key.create("iconDeferrer:projectWasEverInitialized");
 
   private static boolean wasEverInitialized(@NotNull Project project) {
@@ -172,7 +173,7 @@ public class IconUtil {
       icon = new LayeredIcon(icon, PlatformIcons.LOCKED_ICON);
     }
 
-    Iconable.LastComputedIcon.put(file, icon, flags);
+    LastComputedIconCache.put(file, icon, flags);
 
     return icon;
   }
@@ -180,8 +181,8 @@ public class IconUtil {
   @Iconable.IconFlags
   private static int filterFileIconFlags(@NotNull VirtualFile file, @Iconable.IconFlags int flags) {
     UserDataHolder fileTypeDataHolder = ObjectUtils.tryCast(file.getFileType(), UserDataHolder.class);
-    int fileTypeFlagIgnoreMask = Iconable.ICON_FLAG_IGNORE_MASK.get(fileTypeDataHolder, 0);
-    int flagIgnoreMask = Iconable.ICON_FLAG_IGNORE_MASK.get(file, fileTypeFlagIgnoreMask);
+    int fileTypeFlagIgnoreMask = ICON_FLAG_IGNORE_MASK.get(fileTypeDataHolder, 0);
+    int flagIgnoreMask = ICON_FLAG_IGNORE_MASK.get(file, fileTypeFlagIgnoreMask);
     //noinspection MagicConstant
     return flags & ~flagIgnoreMask;
   }
@@ -191,7 +192,7 @@ public class IconUtil {
    * Use {@link #computeFileIcon} where possible (e.g. in background threads) to get a non-deferred icon.
    */
   public static @NotNull Icon getIcon(@NotNull VirtualFile file, @Iconable.IconFlags int flags, @Nullable Project project) {
-    Icon lastIcon = Iconable.LastComputedIcon.get(file, flags);
+    Icon lastIcon = LastComputedIconCache.get(file, flags);
     Icon base = lastIcon != null ? lastIcon : computeBaseFileIcon(file);
     return IconManager.getInstance().createDeferredIcon(base, new FileIconKey(file, project, flags), ICON_NULLABLE_FUNCTION);
   }
@@ -234,12 +235,39 @@ public class IconUtil {
     return baseIcon;
   }
 
+  @NotNull
   public static Image toImage(@NotNull Icon icon) {
-    return IconLoader.toImage(icon, null);
+    return toImage(icon, null);
   }
 
+  @NotNull
   public static Image toImage(@NotNull Icon icon, @Nullable ScaleContext context) {
-    return IconLoader.toImage(icon, context);
+    Image image = IconLoader.toImage(icon, context);
+    if (image == null) {
+      //noinspection UndesirableClassUsage
+      image = new BufferedImage(1, 0, BufferedImage.TYPE_INT_ARGB);
+    }
+    return image;
+  }
+
+  @NotNull
+  public static BufferedImage toBufferedImage(@NotNull Icon icon) {
+    return toBufferedImage(icon, false);
+  }
+
+  @NotNull
+  public static BufferedImage toBufferedImage(@NotNull Icon icon, boolean inUserScale) {
+    return toBufferedImage(icon, null, inUserScale);
+  }
+
+  @NotNull
+  public static BufferedImage toBufferedImage(@NotNull Icon icon, @Nullable ScaleContext context, boolean inUserScale) {
+    Image image = IconLoader.toImage(icon, context);
+    if (image == null) {
+      //noinspection UndesirableClassUsage
+      image = new BufferedImage(1, 0, BufferedImage.TYPE_INT_ARGB);
+    }
+    return ImageUtil.toBufferedImage(image, inUserScale);
   }
 
   @NotNull
@@ -523,11 +551,44 @@ public class IconUtil {
    */
   @NotNull
   public static Icon scale(@NotNull Icon icon, @Nullable Component ancestor, float scale) {
-    if (icon instanceof ScalableIcon) {
-      if (icon instanceof ScaleContextAware) {
-        ((ScaleContextAware)icon).updateScaleContext(ancestor != null ? ScaleContext.create(ancestor) : null);
+    ScaleContext ctx;
+    if (ancestor == null && icon instanceof ScaleContextAware) {
+      // In this case the icon's context should be preserved, except the OBJ_SCALE.
+      UserScaleContext usrCtx = ((ScaleContextAware)icon).getScaleContext();
+      ctx = ScaleContext.create(usrCtx);
+    } else {
+      ctx = ScaleContext.create(ancestor);
+    }
+    ctx.update(OBJ_SCALE.of(scale));
+    return scale(icon, ctx);
+  }
+
+  /**
+   * Returns a scaled icon instance.
+   * <p>
+   * The passed {@code ctx} is applied to the icon and the {@link ScaleType#OBJ_SCALE} is used to scale it.
+   *
+   * @see #scale(Icon, Component, float)
+   * @param icon the icon to scale
+   * @param ctx the scale context to apply
+   * @param scale the scale factor
+   * @return the scaled icon
+   */
+  @NotNull
+  public static Icon scale(@NotNull Icon icon, @NotNull ScaleContext ctx) {
+    double scale = ctx.getScale(OBJ_SCALE);
+    if (icon instanceof CopyableIcon) {
+      icon = ((CopyableIcon)icon).deepCopy();
+      if (icon instanceof ScalableIcon) {
+        if (icon instanceof ScaleContextAware) {
+          ctx = ctx.copy();
+          // Reset OBJ_SCALE in the context to preserve ScalableIcon.scale(float) implementation
+          // from accumulation of the scales: OBJ_SCALE * scale.
+          ctx.update(OBJ_SCALE.of(1.0));
+          ((ScaleContextAware)icon).updateScaleContext(ctx);
+        }
+        return ((ScalableIcon)icon).scale((float)scale);
       }
-      return ((ScalableIcon)icon).scale(scale);
     }
     return scale(icon, scale);
   }
