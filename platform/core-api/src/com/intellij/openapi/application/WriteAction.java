@@ -59,10 +59,7 @@ public abstract class WriteAction<T> extends BaseActionRunnable<T> {
       }
     });
 
-    if (!isSilentExecution()) {
-      result.throwException();
-    }
-
+    result.throwException();
     return result;
   }
 
@@ -97,13 +94,10 @@ public abstract class WriteAction<T> extends BaseActionRunnable<T> {
    * Must be called from the EDT.
    */
   public static <E extends Throwable> void run(@NotNull ThrowableRunnable<E> action) throws E {
-    @SuppressWarnings("deprecation") AccessToken token = start(action.getClass());
-    try {
+    ApplicationManager.getApplication().runWriteAction((ThrowableComputable<Void, E>)() -> {
       action.run();
-    }
-    finally {
-      token.finish();
-    }
+      return null;
+    });
   }
 
   /**
@@ -171,8 +165,8 @@ public abstract class WriteAction<T> extends BaseActionRunnable<T> {
     if (t != null) {
       t.addSuppressed(new RuntimeException()); // preserve the calling thread stacktrace
       ExceptionUtil.rethrowUnchecked(t);
-      @SuppressWarnings("unchecked") E e = (E)t;
-      throw e;
+      //noinspection unchecked
+      throw (E)t;
     }
 
     return result.get();

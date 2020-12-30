@@ -104,12 +104,6 @@ open class ProjectInspectionProfileManager(val project: Project) : BaseInspectio
 
       scopesManager.addScopeListener(projectScopeListener, project)
       NamedScopeManager.getInstance(project).addScopeListener(projectScopeListener, project)
-
-      val appScopeListener = NamedScopesHolder.ScopeListener {
-        InspectionProfileManager.getInstance().currentProfile.scopesChanged()
-      }
-
-      NamedScopeManager.getInstance(project).addScopeListener(appScopeListener, project)
     }
   }
 

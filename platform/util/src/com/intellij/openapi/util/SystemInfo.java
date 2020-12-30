@@ -5,14 +5,14 @@ import com.intellij.openapi.util.io.PathExecLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.util.lang.JavaVersion;
+import com.intellij.util.system.CpuArch;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.List;
-
-import static com.intellij.util.ObjectUtils.notNull;
 
 /**
  * Provides information about operating system, system-wide settings, and Java Runtime.
@@ -65,9 +65,19 @@ public final class SystemInfo {
 
   /* version numbers from http://msdn.microsoft.com/en-us/library/windows/desktop/ms724832.aspx */
   public static final boolean isWin2kOrNewer = isWindows && isOsVersionAtLeast("5.0");
-  public static final boolean isWinXpOrNewer = isWindows && isOsVersionAtLeast("5.1");
+
+  /**
+   * @deprecated IDEA 2021 or newer requires Windows 7 or newer.
+   */
+  @Deprecated
   public static final boolean isWinVistaOrNewer = isWindows && isOsVersionAtLeast("6.0");
+
+  /**
+   * @deprecated IDEA 2021 or newer requires Windows 7 or newer.
+   */
+  @Deprecated
   public static final boolean isWin7OrNewer = isWindows && isOsVersionAtLeast("6.1");
+
   public static final boolean isWin8OrNewer = isWindows && isOsVersionAtLeast("6.2");
   public static final boolean isWin10OrNewer = isWindows && isOsVersionAtLeast("10.0");
 
@@ -75,25 +85,26 @@ public final class SystemInfo {
   public static final boolean isWayland = isXWindow && !Strings.isEmpty(System.getenv("WAYLAND_DISPLAY"));
   /* http://askubuntu.com/questions/72549/how-to-determine-which-window-manager-is-running/227669#227669 */
   public static final boolean isGNOME = isXWindow &&
-                                        (notNull(System.getenv("GDMSESSION"), "").startsWith("gnome") ||
-                                         Strings.toLowerCase(notNull(System.getenv("XDG_CURRENT_DESKTOP"), "")).endsWith("gnome"));
+                                        (getEnvOrEmpty("GDMSESSION").startsWith("gnome") ||
+                                         Strings.toLowerCase(getEnvOrEmpty("XDG_CURRENT_DESKTOP")).endsWith("gnome"));
   /* https://userbase.kde.org/KDE_System_Administration/Environment_Variables#KDE_FULL_SESSION */
   public static final boolean isKDE = isXWindow && !Strings.isEmpty(System.getenv("KDE_FULL_SESSION"));
 
-  public static final boolean isXfce = isXWindow && (notNull(System.getenv("GDMSESSION"), "").startsWith("xfce")) ||
-                                       Strings.toLowerCase(notNull(System.getenv("XDG_CURRENT_DESKTOP"), "")).contains("xfce");
-  public static final boolean isI3= isXWindow && (notNull(System.getenv("GDMSESSION"), "").startsWith("i3")) ||
-                                    Strings.toLowerCase(notNull(System.getenv("XDG_CURRENT_DESKTOP"), "")).contains("i3");
+  public static final boolean isXfce = isXWindow && getEnvOrEmpty("GDMSESSION").startsWith("xfce") ||
+                                       Strings.toLowerCase(getEnvOrEmpty("XDG_CURRENT_DESKTOP")).contains("xfce");
+  public static final boolean isI3 = (isXWindow && getEnvOrEmpty("GDMSESSION").startsWith("i3")) ||
+                                     Strings.toLowerCase(getEnvOrEmpty("XDG_CURRENT_DESKTOP")).contains("i3");
 
   public static final boolean isMacSystemMenu = isMac && "true".equals(System.getProperty("apple.laf.useScreenMenuBar"));
 
   public static final boolean isFileSystemCaseSensitive = SystemInfoRt.isFileSystemCaseSensitive;
-  public static final boolean areSymLinksSupported = isUnix || isWinVistaOrNewer;
+  public static final boolean areSymLinksSupported = isUnix || isWindows;
 
-  public static final boolean is32Bit = SystemInfoRt.is32Bit;
-  public static final boolean is64Bit = SystemInfoRt.is64Bit;
-  public static final boolean isIntel64 = "x86_64".equals(OS_ARCH) || "amd64".equals(OS_ARCH);
-  public static final boolean isArm64 = "aarch64".equals(OS_ARCH) || "arm64".equals(OS_ARCH);
+  private static final String ARCH_DATA_MODEL = System.getProperty("sun.arch.data.model");
+  public static final boolean is32Bit = ARCH_DATA_MODEL == null || ARCH_DATA_MODEL.equals("32");
+  public static final boolean is64Bit = !is32Bit;
+  public static final boolean isIntel64 = CpuArch.CURRENT == CpuArch.X86_64;
+  public static final boolean isArm64 = CpuArch.CURRENT == CpuArch.ARM64;
   public static final boolean isMacIntel64 = isMac && isIntel64;
 
   private static final NotNullLazyValue<Boolean> ourHasXdgOpen = PathExecLazyValue.create("xdg-open");
@@ -237,8 +248,8 @@ public final class SystemInfo {
     return StringUtil.compareVersionNumbers(JAVA_RUNTIME_VERSION, v) >= 0;
   }
 
-  /** @deprecated use {@link #isWinXpOrNewer} */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
-  @Deprecated public static final boolean isWindowsXP = isWindows && (OS_VERSION.equals("5.1") || OS_VERSION.equals("5.2"));
-  //</editor-fold>
+  private static @NotNull String getEnvOrEmpty(@Nullable String name) {
+    String value = System.getenv(name);
+    return value == null ? "" : value;
+  }
 }

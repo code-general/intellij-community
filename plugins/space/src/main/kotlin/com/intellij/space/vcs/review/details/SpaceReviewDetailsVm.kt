@@ -9,6 +9,7 @@ import circlet.code.codeReview
 import circlet.platform.api.Ref
 import circlet.platform.api.TID
 import circlet.platform.client.*
+import circlet.workspaces.Workspace
 import com.intellij.openapi.ListSelection
 import com.intellij.openapi.project.Project
 import com.intellij.space.utils.SpaceUrls
@@ -17,18 +18,23 @@ import com.intellij.space.vcs.SpaceRepoInfo
 import com.intellij.space.vcs.review.details.diff.SpaceDiffVm
 import com.intellij.space.vcs.review.details.diff.SpaceDiffVmImpl
 import com.intellij.space.vcs.review.details.diff.SpaceReviewDiffLoader
+import com.intellij.space.vcs.review.details.process.SpaceReviewStateUpdater
+import com.intellij.space.vcs.review.details.process.SpaceReviewStateUpdaterImpl
 import libraries.coroutines.extra.Lifetime
 import libraries.coroutines.extra.Lifetimed
 import runtime.reactive.*
+import runtime.reactive.property.seqCombineLatest
 
 internal sealed class SpaceReviewDetailsVm<R : CodeReviewRecord>(
   final override val lifetime: Lifetime,
   val ideaProject: Project,
   val spaceProjectInfo: SpaceProjectInfo,
   spaceReposInfo: Set<SpaceRepoInfo>,
-  private val reviewRef: Ref<R>,
-  val client: KCircletClient
+  val reviewRef: Ref<R>,
+  val workspace: Workspace
 ) : Lifetimed {
+  val client: KCircletClient = workspace.client
+
   val review: Property<R> = reviewRef.property()
 
   val projectKey: ProjectKey = review.value.project
@@ -48,6 +54,8 @@ internal sealed class SpaceReviewDetailsVm<R : CodeReviewRecord>(
 
   val turnBased: Property<Boolean?> = cellProperty { review.live.turnBased }
 
+  val reviewStateUpdater: SpaceReviewStateUpdater = SpaceReviewStateUpdaterImpl(workspace, review.value)
+
   private val infoByRepos = spaceReposInfo.associateBy(SpaceRepoInfo::name)
 
   private val participantsProperty: Property<LoadingValue<Ref<CodeReviewParticipants>>> = load {
@@ -57,9 +65,14 @@ internal sealed class SpaceReviewDetailsVm<R : CodeReviewRecord>(
   }
 
   private val participantsRef: Property<Ref<CodeReviewParticipants>?> = lastLoadedValueOrNull(participantsProperty)
+  private val pendingCounterRef: Property<Ref<CodeReviewPendingMessageCounter>?> = lastLoadedValueOrNull(pendingCounterAsync(client))
 
-  val participantsVm: Property<SpaceReviewParticipantsVm?> = seqMap(participantsRef) { r ->
-    r?.let { SpaceReviewParticipantsVmImpl(it, projectKey, review.value.identifier, client, lifetime) }
+  val participantsVm: Property<SpaceReviewParticipantsVm?> = seqCombineLatest(participantsRef,
+                                                                              pendingCounterRef) { participantsRef, pendingCounterRef ->
+    if (participantsRef != null && pendingCounterRef != null) {
+      SpaceReviewParticipantsVmImpl(lifetime, projectKey, reviewRef, participantsRef, pendingCounterRef, review.value.identifier, workspace)
+    }
+    else null
   }
 
   private val detailedInfo: Property<CodeReviewDetailedInfo?> = mapInit(review, null) {
@@ -108,8 +121,8 @@ internal class MergeRequestDetailsVm(
   spaceProjectInfo: SpaceProjectInfo,
   spaceReposInfo: Set<SpaceRepoInfo>,
   refMrRecord: Ref<MergeRequestRecord>,
-  client: KCircletClient
-) : SpaceReviewDetailsVm<MergeRequestRecord>(lifetime, ideaProject, spaceProjectInfo, spaceReposInfo, refMrRecord, client) {
+  workspace: Workspace
+) : SpaceReviewDetailsVm<MergeRequestRecord>(lifetime, ideaProject, spaceProjectInfo, spaceReposInfo, refMrRecord, workspace) {
 
   private val branchPair: Property<MergeRequestBranchPair> = cellProperty { review.live.branchPair }
 
@@ -124,15 +137,16 @@ internal class CommitSetReviewDetailsVm(
   spaceProjectInfo: SpaceProjectInfo,
   spaceReposInfo: Set<SpaceRepoInfo>,
   refMrRecord: Ref<CommitSetReviewRecord>,
-  client: KCircletClient
-) : SpaceReviewDetailsVm<CommitSetReviewRecord>(lifetime, ideaProject, spaceProjectInfo, spaceReposInfo, refMrRecord, client)
+  workspace: Workspace
+) : SpaceReviewDetailsVm<CommitSetReviewRecord>(lifetime, ideaProject, spaceProjectInfo, spaceReposInfo, refMrRecord, workspace)
 
 internal fun createReviewDetailsVm(lifetime: Lifetime,
                                    project: Project,
-                                   client: KCircletClient,
+                                   workspace: Workspace,
                                    spaceProjectInfo: SpaceProjectInfo,
                                    spaceReposInfo: Set<SpaceRepoInfo>,
                                    codeReviewListItem: CodeReviewListItem): SpaceReviewDetailsVm<out CodeReviewRecord> {
+  val client = workspace.client
   return when (val codeReviewRecord = codeReviewListItem.review.resolve()) {
     is MergeRequestRecord -> MergeRequestDetailsVm(
       lifetime,
@@ -140,7 +154,7 @@ internal fun createReviewDetailsVm(lifetime: Lifetime,
       spaceProjectInfo,
       spaceReposInfo,
       codeReviewRecord.toRef(client.arena),
-      client
+      workspace
     )
     is CommitSetReviewRecord -> CommitSetReviewDetailsVm(
       lifetime,
@@ -148,7 +162,7 @@ internal fun createReviewDetailsVm(lifetime: Lifetime,
       spaceProjectInfo,
       spaceReposInfo,
       codeReviewRecord.toRef(client.arena),
-      client
+      workspace
     )
     else -> throw IllegalArgumentException("Unable to resolve CodeReviewRecord")
   }
@@ -162,4 +176,13 @@ data class ReviewCommitListItem(
   val spaceRepoInfo: SpaceRepoInfo?
 ) {
   val inCurrentProject: Boolean = spaceRepoInfo != null
+}
+
+
+private fun SpaceReviewDetailsVm<*>.pendingCounterAsync(client: KCircletClient): LoadingProperty<Ref<CodeReviewPendingMessageCounter>> {
+  return load {
+    client.arena.resolveRefsOrFetch {
+      reviewRef.extensionRef(CodeReviewPendingMessageCounter::class)
+    }
+  }
 }

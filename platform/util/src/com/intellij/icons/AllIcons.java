@@ -224,15 +224,25 @@ public class AllIcons {
     /** 12x16 */ public static final @NotNull Icon CwmAccessDotOn = load("codeWithMe/cwmAccessDotOn.svg", -2516495234422554919L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmAccessOff = load("codeWithMe/cwmAccessOff.svg", -3285420431309666253L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmAccessOn = load("codeWithMe/cwmAccessOn.svg", 4803550132182083872L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmCamOff = load("codeWithMe/cwmCamOff.svg", -2088058011499646084L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmCamOn = load("codeWithMe/cwmCamOn.svg", 4185871417777959344L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmDisableCall = load("codeWithMe/cwmDisableCall.svg", -2723979276510942685L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmEnableCall = load("codeWithMe/cwmEnableCall.svg", -6726452533302541429L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmFollow = load("codeWithMe/cwmFollow.svg", 421350531028907789L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmFollowMe = load("codeWithMe/cwmFollowMe.svg", -270893421881497261L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmForceFollowMe = load("codeWithMe/cwmForceFollowMe.svg", 4620331311933886528L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmFullSync = load("codeWithMe/cwmFullSync.svg", -5990287561754382387L, 2);
-    /** 16x16 */ public static final @NotNull Icon CwmInvite = load("codeWithMe/cwmInvite.svg", 2052909107704444148L, 2);
-    /** 16x16 */ public static final @NotNull Icon CwmJoin = load("codeWithMe/cwmJoin.svg", -2286141021758642105L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmInvite = load("codeWithMe/cwmInvite.svg", -6378398958929348504L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmJoin = load("codeWithMe/cwmJoin.svg", -5688831560680536203L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmJump = load("codeWithMe/cwmJump.svg", 6222033519634375585L, 2);
     /** 16x16 */ public static final @NotNull Icon CwmKick = load("codeWithMe/cwmKick.svg", -4882021339463982249L, 2);
-    /** 16x16 */ public static final @NotNull Icon CwmTerminate = load("codeWithMe/cwmTerminate.svg", 810707231908586571L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmLeaveCall = load("codeWithMe/cwmLeaveCall.svg", 2933730550014524791L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmMicOff = load("codeWithMe/cwmMicOff.svg", -2532064138621392922L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmMicOn = load("codeWithMe/cwmMicOn.svg", -2521698193171779423L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmPermissionEdit = load("codeWithMe/cwmPermissionEdit.svg", -467237567778538603L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmPermissions = load("codeWithMe/cwmPermissions.svg", -3626990678285946908L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmPermissionView = load("codeWithMe/cwmPermissionView.svg", -7408159216023644971L, 2);
+    /** 16x16 */ public static final @NotNull Icon CwmTerminate = load("codeWithMe/cwmTerminate.svg", -3719367957211773326L, 2);
     /** 16x16 */ public static final @NotNull Icon Users = load("codeWithMe/users.svg", -3982956695729524383L, 2);
   }
 
@@ -438,6 +448,8 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Inline_edit_hovered = load("general/inline_edit_hovered.svg", 2988137314589454029L, 0);
     /** 16x16 */ public static final @NotNull Icon InlineAdd = load("general/inlineAdd.svg", 8489137059451859895L, 0);
     /** 16x16 */ public static final @NotNull Icon InlineAddHover = load("general/inlineAddHover.svg", -5542594245343678718L, 0);
+    /** 16x16 */ public static final @NotNull Icon InlineCopy = load("general/inlineCopy.svg", -4855094318175728694L, 0);
+    /** 16x16 */ public static final @NotNull Icon InlineCopyHover = load("general/inlineCopyHover.svg", -2988721819466634227L, 0);
     /** 16x16 */ public static final @NotNull Icon InlineVariables = load("general/inlineVariables.svg", 8073845700601085490L, 0);
     /** 16x16 */ public static final @NotNull Icon InlineVariablesHover = load("general/inlineVariablesHover.svg", -8704262145129771018L, 0);
     /** 16x16 */ public static final @NotNull Icon InspectionsError = load("general/inspectionsError.svg", -3535121862077461586L, 0);
@@ -987,6 +999,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon RemoteDebug = load("runConfigurations/remoteDebug.svg", 2931940180745308475L, 2);
     /** 16x16 */ public static final @NotNull Icon RerunFailedTests = load("runConfigurations/rerunFailedTests.svg", -6426507070384423641L, 2);
     /** 16x16 */ public static final @NotNull Icon Scroll_down = load("runConfigurations/scroll_down.svg", -3639196916339524370L, 2);
+    /** 16x16 */ public static final @NotNull Icon Scroll_up = load("runConfigurations/scroll_up.svg", 7903704837301127306L, 2);
     /** 16x16 */ public static final @NotNull Icon ShowIgnored = load("runConfigurations/showIgnored.svg", -4002920975740649796L, 2);
     /** 16x16 */ public static final @NotNull Icon ShowPassed = load("runConfigurations/showPassed.svg", -6720194468316776230L, 2);
     /** 16x16 */ public static final @NotNull Icon SortbyDuration = load("runConfigurations/sortbyDuration.svg", 7949917760534896820L, 2);
@@ -1102,6 +1115,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Clone = load("vcs/clone.svg", -1375836334066178879L, 2);
     /** 16x16 */ public static final @NotNull Icon CommitNode = load("vcs/commitNode.svg", -1268860971233258701L, 0);
     /** 16x16 */ public static final @NotNull Icon Equal = load("vcs/equal.svg", 2918767493700488796L, 2);
+    /** 16x16 */ public static final @NotNull Icon Fetch = load("vcs/fetch.svg", -7222299505873767547L, 2);
     /** 16x16 */ public static final @NotNull Icon Folders = load("vcs/folders.svg", -2499589314083663710L, 2);
     /** 24x24 */ public static final @NotNull Icon FromVCSDialog = load("vcs/fromVCSDialog.svg", -4443619065115897076L, 2);
     /** 16x16 */ public static final @NotNull Icon History = load("vcs/history.svg", 994221750501536120L, 2);

@@ -13,14 +13,14 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Base for offscreen and regular browsers
+ * Base class for windowed and offscreen browsers.
  */
 public abstract class JBCefBrowserBase implements JBCefDisposable {
 
   protected static final String BLANK_URI = "about:blank";
   @SuppressWarnings("SpellCheckingInspection")
   protected static final String JBCEFBROWSER_INSTANCE_PROP = "JBCefBrowser.instance";
-  @NotNull protected final DisposeHelper myDisposeHelper = new DisposeHelper();
+  @NotNull private final DisposeHelper myDisposeHelper = new DisposeHelper();
   @Nullable private volatile LoadDeferrer myLoadDeferrer;
 
   /**
@@ -50,7 +50,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
         @Override
         public void onAfterCreated(CefBrowser browser) {
           myIsCefBrowserCreated = true;
-          getJBCefClient().notifyBrowserCreated(JBCefBrowserBase.this);
           LoadDeferrer loader = myLoadDeferrer;
           if (loader != null) {
             loader.load(browser);

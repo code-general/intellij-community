@@ -287,6 +287,8 @@
     <notificationGroup id="Maven" displayType="BALLOON"/>
     <toolWindowAllowlist id="Maven"/>
     <compiler.buildIssueContributor implementation="org.jetbrains.idea.maven.externalSystemIntegration.output.quickfixes.JpsReleaseVersion5QuickFix" />
+
+    <toolWindowExtractor implementation="org.jetbrains.idea.maven.navigator.MavenToolWindowViewModelExtractor" />
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij.properties">
@@ -427,7 +429,8 @@
       <param name="delimiters/delimiter" disableReferences="true"/>
     </pluginDescriptor>
 
-    <mavenServerSupportFactory implementation="org.jetbrains.idea.maven.server.LocalMavenRemoteProcessSupportFactory"/>
+    <mavenServerSupportFactory implementation="org.jetbrains.idea.maven.server.wsl.WslMavenRemoteProcessSupportFactory"/>
+    <remotePathTransformerFactory implementation="org.jetbrains.idea.maven.server.wsl.WslRemotePathTransformFactory"/>
     <importer implementation="org.jetbrains.idea.maven.importing.MavenCompilerImporter"/>
     <importer implementation="org.jetbrains.idea.maven.importing.MavenCompilerAnnotationProcessorPathsImporter"/>
     <importer implementation="org.jetbrains.idea.maven.importing.ExternalAnnotationsImporter"/>

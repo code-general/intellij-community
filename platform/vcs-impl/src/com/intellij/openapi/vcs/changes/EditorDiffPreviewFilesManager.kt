@@ -1,7 +1,9 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes
 
+import com.intellij.diff.util.DiffUtil
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.*
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -11,10 +13,12 @@ import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.annotations.RequiresEdt
+import com.intellij.util.messages.Topic
 
-@Service
-@State(name = "EditorDiffPreview.Settings", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class EditorDiffPreviewFilesManager(private val project: Project) :
+@Service(Service.Level.APP)
+@State(name = "EditorDiffPreview.Settings", storages = [(Storage(value = DiffUtil.DIFF_CONFIG))])
+class EditorDiffPreviewFilesManager :
   SimplePersistentStateComponent<EditorDiffPreviewFilesManager.State>(State()),
   Disposable {
 
@@ -23,10 +27,13 @@ class EditorDiffPreviewFilesManager(private val project: Project) :
   }
 
   init {
-    project.messageBus.connect(this).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+    val messageBus = ApplicationManager.getApplication().messageBus
+    messageBus.connect(this).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
       override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
         if (file is PreviewDiffVirtualFile && source is FileEditorManagerEx) {
-          shouldOpenInNewWindow = source.findFloatingWindowForFile(file) != null
+          val isOpenInNewWindow = source.findFloatingWindowForFile(file) != null
+          shouldOpenInNewWindow = isOpenInNewWindow
+          messageBus.syncPublisher(EditorDiffPreviewFilesListener.TOPIC).shouldOpenInNewWindowChanged(isOpenInNewWindow)
         }
       }
     })
@@ -38,11 +45,25 @@ class EditorDiffPreviewFilesManager(private val project: Project) :
       state.openInNewWindow = value
     }
 
-  fun openFile(file: PreviewDiffVirtualFile, focusEditor: Boolean): Array<out FileEditor> {
+  fun openFile(project: Project,
+               file: PreviewDiffVirtualFile,
+               focusEditor: Boolean,
+               openInNewWindow: Boolean,
+               shouldCloseFile: Boolean): Array<out FileEditor> {
+    val editorManager = FileEditorManager.getInstance(project) as FileEditorManagerImpl
+    if (shouldCloseFile && editorManager.isFileOpen(file)) {
+      editorManager.closeFile(file)
+    }
+    shouldOpenInNewWindow = openInNewWindow
+
+    return openFile(project, file, focusEditor)
+  }
+
+  fun openFile(project: Project, file: PreviewDiffVirtualFile, focusEditor: Boolean): Array<out FileEditor> {
     val editorManager = FileEditorManager.getInstance(project) as FileEditorManagerImpl
     if (editorManager.isFileOpen(file)) {
       if (focusEditor) {
-        focusEditor(file)
+        focusEditor(project, file)
       }
       return emptyArray()
     }
@@ -55,7 +76,7 @@ class EditorDiffPreviewFilesManager(private val project: Project) :
     }
   }
 
-  private fun focusEditor(file: PreviewDiffVirtualFile) {
+  private fun focusEditor(project: Project, file: PreviewDiffVirtualFile) {
     val editorManager = FileEditorManager.getInstance(project) as FileEditorManagerImpl
     val window = editorManager.windows.find { it.isFileOpen(file) } ?: return
     val composite = window.findFileComposite(file) ?: return
@@ -67,11 +88,22 @@ class EditorDiffPreviewFilesManager(private val project: Project) :
 
   companion object {
     @JvmStatic
-    fun getInstance(project: Project): EditorDiffPreviewFilesManager = project.service()
+    fun getInstance(): EditorDiffPreviewFilesManager = service()
 
     @JvmStatic
     fun FileEditorManagerEx.findFloatingWindowForFile(file: VirtualFile): EditorWindow? {
       return windows.find { it.owner.isFloating && it.isFileOpen(file) }
     }
+  }
+}
+
+interface EditorDiffPreviewFilesListener {
+  @RequiresEdt
+  fun shouldOpenInNewWindowChanged(shouldOpenInNewWindow: Boolean)
+
+  companion object {
+    @JvmField
+    val TOPIC: Topic<EditorDiffPreviewFilesListener> =
+      Topic(EditorDiffPreviewFilesListener::class.java, Topic.BroadcastDirection.NONE, true)
   }
 }

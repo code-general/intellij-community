@@ -21,10 +21,9 @@ import training.learn.interfaces.Module
 import training.learn.lesson.LessonManager
 import training.ui.UISettings
 import training.util.createBalloon
-import java.awt.Color
+import java.awt.*
 import java.awt.Cursor
-import java.awt.event.MouseEvent
-import java.awt.event.MouseListener
+import java.awt.event.*
 import javax.swing.JLabel
 import javax.swing.JPanel
 
@@ -91,7 +90,17 @@ class LearningItems : JPanel() {
     modulePanel.layout = VerticalLayout(5)
     modulePanel.background = Color(0, 0, 0, 0)
 
-    val result = JPanel()
+    val result = object : JPanel() {
+      private var onInstall = true
+
+      override fun paint(g: Graphics?) {
+        if (onInstall && mouseAlreadyInside(this)) {
+          setCorrectBackgroundOnInstall(this)
+          onInstall = false
+        }
+        super.paint(g)
+      }
+    }
     result.isOpaque = true
     result.background = UISettings.instance.backgroundColor
 
@@ -121,8 +130,10 @@ class LearningItems : JPanel() {
     }
     result.add(modulePanel)
 
-    result.addMouseListener(object : MouseListener {
-      override fun mouseClicked(e: MouseEvent) {
+    result.addMouseListener(object : MouseAdapter() {
+      override fun mouseReleased(e: MouseEvent) {
+        if (!result.visibleRect.contains(e.point)) return
+
         if (expanded.contains(module)) {
           expanded.remove(module)
         }
@@ -133,15 +144,8 @@ class LearningItems : JPanel() {
         updateItems()
       }
 
-      override fun mousePressed(e: MouseEvent) {
-      }
-
-      override fun mouseReleased(e: MouseEvent) {
-      }
-
       override fun mouseEntered(e: MouseEvent) {
-        result.background = HOVER_COLOR
-        result.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        setCorrectBackgroundOnInstall(result)
         result.revalidate()
         result.repaint()
       }
@@ -162,5 +166,17 @@ class LearningItems : JPanel() {
     progressLabel.name = "progressLabel"
     progressLabel.foreground = if (module.hasNotPassedLesson()) UISettings.instance.moduleProgressColor else UISettings.instance.completedColor
     return progressLabel
+  }
+
+  private fun setCorrectBackgroundOnInstall(component: Component) {
+    component.background = HOVER_COLOR
+    component.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+  }
+
+  private fun mouseAlreadyInside(c: Component): Boolean {
+    val mousePos: Point = MouseInfo.getPointerInfo().location
+    val bounds: Rectangle = c.bounds
+    bounds.location = c.locationOnScreen
+    return bounds.contains(mousePos)
   }
 }

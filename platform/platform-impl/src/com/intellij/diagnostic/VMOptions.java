@@ -8,7 +8,6 @@ import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.SystemProperties;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -124,13 +123,13 @@ public final class VMOptions {
       if (!StringUtil.isEmptyOrSpaces(content)) {
         Matcher m = pattern.matcher(content);
         if (m.find()) {
-          StringBuffer b = new StringBuffer();
+          StringBuilder b = new StringBuilder();
           m.appendReplacement(b, Matcher.quoteReplacement(value));
           m.appendTail(b);
           content = b.toString();
         }
         else if (!StringUtil.isEmptyOrSpaces(value)) {
-          content = StringUtil.trimTrailing(content) + SystemProperties.getLineSeparator() + value;
+          content = StringUtil.trimTrailing(content) + System.lineSeparator() + value;
         }
       }
       else {

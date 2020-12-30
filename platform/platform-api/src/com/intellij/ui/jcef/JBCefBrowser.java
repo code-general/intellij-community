@@ -12,6 +12,7 @@ import com.intellij.openapi.project.LightEditActionFactory;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfoRt;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
@@ -35,15 +36,13 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collections;
+import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -57,11 +56,12 @@ import static org.cef.callback.CefMenuModel.MenuId.MENU_ID_USER_LAST;
  * A wrapper over {@link CefBrowser}.
  * <p>
  * Use {@link #getComponent()} as the browser's UI component.
+ * <p>
  * Use {@link #loadURL(String)} or {@link #loadHTML(String)} for loading.
+ * <p>
+ * Use {@link JBCefOsrHandlerBrowser} to render offscreen via a custom {@link CefRenderHandler}.
  *
- * If you need to render output using your own handler, see {@link JBCefOsrHandlerBrowser}
  * @see JBCefOsrHandlerBrowser
- *
  * @author tav
  */
 public class JBCefBrowser extends JBCefBrowserBase {
@@ -71,6 +71,8 @@ public class JBCefBrowser extends JBCefBrowserBase {
   @NotNull private final CefKeyboardHandler myKeyboardHandler;
   @NotNull private static final List<Consumer<? super JBCefBrowser>> ourOnBrowserMoveResizeCallbacks =
     Collections.synchronizedList(new ArrayList<>(1));
+
+  @NotNull private final DisposeHelper myDisposeHelper = new DisposeHelper();
   private final boolean myIsDefaultClient;
   private JDialog myDevtoolsFrame = null;
   protected CefContextMenuHandler myDefaultContextMenuHandler;
@@ -83,11 +85,11 @@ public class JBCefBrowser extends JBCefBrowserBase {
       @Override
       public @NotNull String initialize() {
         try {
-          URL url = JBCefApp.class.getResource("resources/load_error.html");
-          if (url != null) return Files.readString(Paths.get(url.toURI()));
+          return new String(FileUtil.loadBytes(Objects.requireNonNull(
+              JBCefApp.class.getResourceAsStream("resources/load_error.html"))), StandardCharsets.UTF_8);
         }
-        catch (IOException | URISyntaxException ex) {
-          Logger.getInstance(JBCefBrowser.class).error("couldn't find load_error.html", ex);
+        catch (IOException | NullPointerException e) {
+          Logger.getInstance(JBCefBrowser.class).error("couldn't find load_error.html", e);
         }
         return "";
       }

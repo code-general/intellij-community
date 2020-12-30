@@ -4,18 +4,17 @@ package com.intellij.ide.plugins.cl;
 import com.intellij.diagnostic.PluginException;
 import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.openapi.application.Application;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.ShutDownTracker;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.SmartList;
+import com.intellij.util.lang.ClassPath;
+import com.intellij.util.lang.Resource;
 import com.intellij.util.lang.UrlClassLoader;
+import com.intellij.util.ui.EDT;
 import org.jetbrains.annotations.*;
 
-import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,7 +26,6 @@ import java.nio.file.Paths;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.security.cert.Certificate;
-import java.util.List;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +34,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @ApiStatus.NonExtendable
 public class PluginClassLoader extends UrlClassLoader implements PluginAwareClassLoader {
   public static final ClassLoader[] EMPTY_CLASS_LOADER_ARRAY = new ClassLoader[0];
+
+  private static final boolean isParallelCapable = USE_PARALLEL_LOADING && registerAsParallelCapable();
 
   private static final @Nullable Writer logStream;
   private static final AtomicInteger instanceIdProducer = new AtomicInteger();
@@ -79,10 +79,6 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
       }
     }
     KOTLIN_STDLIB_CLASSES_USED_IN_SIGNATURES = kotlinStdlibClassesUsedInSignatures;
-
-    if (registerAsParallelCapable()) {
-      markParallelCapable(PluginClassLoader.class);
-    }
 
     Writer logStreamCandidate = null;
     String debugFilePath = System.getProperty("plugin.classloader.debug", "");
@@ -136,8 +132,9 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
                            @NotNull PluginDescriptor pluginDescriptor,
                            @Nullable Path pluginRoot,
                            @NotNull ClassLoader coreLoader,
-                           @Nullable String packagePrefix) {
-    super(builder);
+                           @Nullable String packagePrefix,
+                           @Nullable ClassPath.ResourceFileFactory resourceFileFactory) {
+    super(builder, resourceFileFactory, isParallelCapable);
 
     instanceId = instanceIdProducer.incrementAndGet();
 
@@ -245,10 +242,8 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
     }
 
     if (startTime != -1) {
-      Application app = ApplicationManager.getApplication();
-      // JDK impl is not so fast as ours, use it only if no application
-      boolean isEdt = app == null ? EventQueue.isDispatchThread() : app.isDispatchThread();
-      (isEdt ? edtTime : backgroundTime).addAndGet(StartUpMeasurer.getCurrentTime() - startTime);
+      // EventQueue.isDispatchThread() is expensive
+      (EDT.isCurrentThreadEdt() ? edtTime : backgroundTime).addAndGet(StartUpMeasurer.getCurrentTime() - startTime);
     }
 
     return c;
@@ -318,7 +313,7 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
 
       Writer logStream = PluginClassLoader.logStream;
       try {
-        c = _findClass(name);
+        c = classPath.findClass(name);
       }
       catch (LinkageError e) {
         if (logStream != null) {
@@ -386,17 +381,19 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
 
   @Override
   public final InputStream getResourceAsStream(String name) {
-    InputStream stream = getOwnResourceAsStream(name);
+    String canonicalPath = toCanonicalPath(name);
+
+    InputStream stream = getOwnResourceAsStreamByCanonicalPath(canonicalPath);
     if (stream != null) {
       return stream;
     }
 
     for (ClassLoader classloader : getAllParents()) {
       if (classloader instanceof PluginClassLoader) {
-        stream = ((PluginClassLoader)classloader).getOwnResourceAsStream(name);
+        stream = ((PluginClassLoader)classloader).getOwnResourceAsStreamByCanonicalPath(canonicalPath);
       }
       else {
-        stream = classloader.getResourceAsStream(name);
+        stream = classloader.getResourceAsStream(canonicalPath);
       }
 
       if (stream != null) {
@@ -407,8 +404,17 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
     return null;
   }
 
-  private @Nullable InputStream getOwnResourceAsStream(String name) {
-    return super.getResourceAsStream(name);
+  private @Nullable InputStream getOwnResourceAsStreamByCanonicalPath(String canonicalPath) {
+    try {
+      Resource resource = classPath.getResource(canonicalPath);
+      if (resource == null && canonicalPath.startsWith("/")) {
+        throw new IllegalArgumentException("Do not request resource from classloader using path with leading slash");
+      }
+      return resource == null ? null : resource.getInputStream();
+    }
+    catch (IOException e) {
+      return null;
+    }
   }
 
   @Override
@@ -515,7 +521,11 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
 
   @ApiStatus.Internal
   public final void attachParent(@NotNull ClassLoader classLoader) {
-    parents = ArrayUtil.append(parents, classLoader);
+    int length = parents.length;
+    ClassLoader[] result = new ClassLoader[length + 1];
+    System.arraycopy(parents, 0, result, 0, length);
+    result[length] = classLoader;
+    parents = result;
     parentListCacheIdCounter.incrementAndGet();
   }
 
@@ -524,10 +534,20 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
    */
   @ApiStatus.Internal
   public final boolean detachParent(@NotNull ClassLoader classLoader) {
-    int oldSize = parents.length;
-    parents = ArrayUtil.remove(parents, classLoader);
-    parentListCacheIdCounter.incrementAndGet();
-    return parents.length == oldSize - 1;
+    for (int i = 0; i < parents.length; i++) {
+      if (classLoader != parents[i]) {
+        continue;
+      }
+
+      int length = parents.length;
+      ClassLoader[] result = new ClassLoader[length - 1];
+      System.arraycopy(parents, 0, result, 0, i);
+      System.arraycopy(parents, i + 1, result, i, length - i - 1);
+      parents = result;
+      parentListCacheIdCounter.incrementAndGet();
+      return true;
+    }
+    return false;
   }
 
   @Override

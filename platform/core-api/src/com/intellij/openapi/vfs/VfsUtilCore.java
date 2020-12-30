@@ -17,7 +17,6 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.PathUtil;
 import com.intellij.util.Processor;
-import com.intellij.util.UrlUtilRt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.DistinctRootsCollection;
 import com.intellij.util.io.URLUtil;
@@ -42,8 +41,6 @@ public class VfsUtilCore {
   public static final @NonNls String LOCALHOST_URI_PATH_PREFIX = "localhost/";
   public static final char VFS_SEPARATOR_CHAR = '/';
   public static final String VFS_SEPARATOR = "/";
-
-  private static final String PROTOCOL_DELIMITER = ":";
 
   /**
    * @param strict if {@code false} then this method returns {@code true} if {@code ancestor} and {@code file} are equal
@@ -390,7 +387,7 @@ public class VfsUtilCore {
   }
 
   public static @NotNull @NlsSafe String urlToPath(@Nullable String url) {
-    return url == null ? "" : VirtualFileManager.extractPath(url);
+    return URLUtil.urlToPath(url);
   }
 
   /**
@@ -479,30 +476,15 @@ public class VfsUtilCore {
   }
 
   public static @NotNull String convertFromUrl(@NotNull URL url) {
-    String protocol = url.getProtocol();
-    String path = url.getPath();
-    if (protocol.equals(URLUtil.JAR_PROTOCOL)) {
-      if (StringUtil.startsWithConcatenation(path, URLUtil.FILE_PROTOCOL, PROTOCOL_DELIMITER)) {
-        try {
-          URL subURL = new URL(path);
-          path = subURL.getPath();
-        }
-        catch (MalformedURLException e) {
-          throw new RuntimeException(CoreBundle.message("url.parse.unhandled.exception"), e);
-        }
-      }
-      else {
-        throw new RuntimeException(new IOException(CoreBundle.message("url.parse.error", url.toExternalForm())));
-      }
+    try {
+      return URLUtil.convertFromUrl(url);
     }
-    if (SystemInfoRt.isWindows) {
-      while (!path.isEmpty() && path.charAt(0) == '/') {
-        path = path.substring(1);
-      }
+    catch (MalformedURLException e) {
+      throw new RuntimeException(CoreBundle.message("url.parse.unhandled.exception"), e);
     }
-
-    path = URLUtil.unescapePercentSequences(path);
-    return protocol + "://" + path;
+    catch (IOException e) {
+      throw new RuntimeException(new IOException(CoreBundle.message("url.parse.error", url.toExternalForm())));
+    }
   }
 
   /**
@@ -544,7 +526,7 @@ public class VfsUtilCore {
       if (protocol.equals(StandardFileSystems.FILE_PROTOCOL)) {
         return new URL(StandardFileSystems.FILE_PROTOCOL, "", path);
       }
-      return UrlUtilRt.internProtocol(new URL(vfsUrl));
+      return URLUtil.internProtocol(new URL(vfsUrl));
     }
     catch (MalformedURLException e) {
       LOG.debug("MalformedURLException occurred:" + e.getMessage());
@@ -737,7 +719,7 @@ public class VfsUtilCore {
       if (StringUtil.endsWithChar(fileName, '/')) {
         fileName = fileName.subSequence(0, fileName.length()-1);
       }
-      if (!StringUtil.equal(fileName, path.substring(i + 1, li), file.isCaseSensitive())) {
+      if (!StringUtilRt.equal(fileName, path.substring(i + 1, li), file.isCaseSensitive())) {
         return false;
       }
       file = file.getParent();
@@ -773,7 +755,7 @@ public class VfsUtilCore {
       VirtualFile part = hierarchy.get(j);
       String name = part.getName();
       boolean matches = part.isCaseSensitive() ? StringUtil.startsWith(ancestorPath, i, name) :
-                        StringUtil.startsWithIgnoreCase(ancestorPath, i, name);
+                        StringUtilRt.startsWithIgnoreCase(ancestorPath, i, name);
       if (!matches) {
         break;
       }

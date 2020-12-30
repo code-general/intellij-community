@@ -7,7 +7,6 @@ import com.intellij.openapi.roots.ContentIterator
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.*
-import com.intellij.util.containers.ConcurrentBitSet
 import com.intellij.util.indexing.IndexableFilesFilter
 import org.jetbrains.annotations.ApiStatus
 
@@ -21,16 +20,14 @@ object IndexableFilesIterationMethods {
     project: Project,
     roots: Iterable<VirtualFile>,
     contentIterator: ContentIterator,
-    visitedFileSet: ConcurrentBitSet
+    fileFilter: VirtualFileFilter
   ): Boolean {
     val projectFileIndex = ProjectFileIndex.getInstance(project)
     val filters = IndexableFilesFilter.EP_NAME.extensionList
     val rootsSet = roots.toSet()
-    val fileFilter = VirtualFileFilter { file ->
-      file is VirtualFileWithId && file.id > 0 && !visitedFileSet.set(file.id)
-    }.and { shouldIndexFile(it, projectFileIndex, filters, rootsSet) }
+    val finalFileFilter = fileFilter.and { shouldIndexFile(it, projectFileIndex, filters, rootsSet) }
     return roots.all { root ->
-      VfsUtilCore.iterateChildrenRecursively(root, fileFilter, contentIterator)
+      VfsUtilCore.iterateChildrenRecursively(root, finalFileFilter, contentIterator)
     }
   }
 

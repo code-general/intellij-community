@@ -117,6 +117,7 @@
 
     <action id="ChangesView.Revert" class="com.intellij.openapi.vcs.changes.actions.RollbackAction"
             icon="AllIcons.Actions.Rollback"/>
+    <action id="ChangesView.RevertFiles" class="com.intellij.openapi.vcs.changes.actions.RollbackFilesAction"/>
 
     <group id="ChangesView.ViewOptions"/>
 
@@ -155,6 +156,7 @@
     <group id="ChangesViewPopupMenu">
       <reference ref="CheckinFiles"/>
       <reference ref="ChangesView.Revert"/>
+      <reference ref="ChangesView.RevertFiles"/>
       <reference ref="ChangesView.Move"/>
       <reference ref="Diff.ShowDiff"/>
       <reference ref="EditSource"/>
@@ -374,6 +376,18 @@
     <action id="Vcs.Diff.IncludeOnlyChangedLinesIntoCommit" class="com.intellij.openapi.actionSystem.EmptyAction">
       <add-to-group group-id="Diff.KeymapGroup" relative-to-action="Vcs.Diff.ExcludeChangedLinesFromCommit" anchor="after"/>
     </action>
+    <action id="Vcs.Diff.ShowDiffInEditorTab" class="com.intellij.openapi.vcs.changes.actions.diff.MoveDiffPreviewToEditorAction">
+      <add-to-group group-id="Diff.EditorGutterPopupMenu.EditorSettings" anchor="last"/>
+    </action>
+    <group>
+      <action id="Vcs.Diff.ShowDiffInNewWindow"
+              icon="AllIcons.Actions.MoveToWindow"
+              class="com.intellij.openapi.vcs.changes.actions.diff.MoveDiffPreviewToNewWindowAction">
+      </action>
+      <separator/>
+      <add-to-group group-id="EditorTabPopupMenu" anchor="before" relative-to-action="SplitVertically"/>
+      <add-to-group group-id="Diff.EditorGutterPopupMenu.EditorSettings" anchor="last"/>
+    </group>
 
     <reference ref="Vcs.VcsClone">
       <add-to-group group-id="WelcomeScreen.QuickStart" anchor="first"/>
@@ -451,6 +465,7 @@
       <reference ref="ChangesView.ApplyPatch"/>
       <reference ref="ChangesView.ApplyPatchFromClipboard"/>
       <reference ref="ChangesView.Revert"/>
+      <reference ref="ChangesView.RevertFiles"/>
       <reference ref="ChangesView.Refresh"/>
       <reference ref="ChangesView.NewChangeList"/>
       <reference ref="ChangesView.RemoveChangeList"/>
@@ -495,6 +510,14 @@
       <separator/>
 
       <add-to-group group-id="Diff.KeymapGroup" anchor="after" relative-to-action="CompareClipboardWithSelection"/>
+    </group>
+
+    <group id="CommitView.GearActions">
+      <action id="CommitView.SwitchToCommitDialog" class="com.intellij.vcs.commit.SwitchToCommitDialogAction"/>
+      <action id="CommitView.ShowEditorPreviewOnDoubleClick"
+              class="com.intellij.openapi.vcs.changes.actions.ShowEditorPreviewOnDoubleClickToggleAction"/>
+
+      <add-to-group group-id="VcsGeneral.KeymapGroup"/>
     </group>
 
     <group id="Vcs.Show.Toolwindow.Tab">

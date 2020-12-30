@@ -82,7 +82,7 @@ public class PluginDetailsPageComponent extends MultiPanel {
   private JLabel myRating;
   private JLabel myDownloads;
   private JLabel mySize;
-  private LinkPanel myVendor;
+  private LinkPanel myAuthor;
   private final LicensePanel myLicensePanel = new LicensePanel(false);
   private LinkPanel myHomePage;
   private JBScrollPane myBottomScrollPane;
@@ -164,15 +164,6 @@ public class PluginDetailsPageComponent extends MultiPanel {
     myIconLabel.setOpaque(false);
     header.add(myIconLabel, BorderLayout.WEST);
 
-    myGearButton = SelectionBasedPluginModelAction.createGearButton(
-      this::createEnableDisableAction,
-      () -> createUninstallAction()
-    );
-    myGearButton.setBorder(JBUI.Borders.emptyLeft(5));
-    myGearButton.setBackground(PluginManagerConfigurable.MAIN_BG_COLOR);
-    myGearButton.setOpaque(false);
-    header.add(myGearButton, BorderLayout.EAST);
-
     return header;
   }
 
@@ -246,6 +237,13 @@ public class PluginDetailsPageComponent extends MultiPanel {
     myInstallButton
       .addActionListener(e -> myPluginModel.installOrUpdatePlugin(this, myPlugin, null, ModalityState.stateForComponent(myInstallButton)));
 
+    myGearButton = SelectionBasedPluginModelAction.createGearButton(
+      this::createEnableDisableAction,
+      () -> createUninstallAction()
+    );
+    myGearButton.setOpaque(false);
+    myNameAndButtons.addButtonComponent(myGearButton);
+
     for (Component component : myNameAndButtons.getButtonComponents()) {
       component.setBackground(PluginManagerConfigurable.MAIN_BG_COLOR);
     }
@@ -253,7 +251,6 @@ public class PluginDetailsPageComponent extends MultiPanel {
 
   public void setOnlyUpdateMode() {
     myNameAndButtons.removeButtons();
-    myGearButton.getParent().remove(myGearButton);
     myEnabledForProject.getParent().remove(myEnabledForProject);
     myPanel.setBorder(JBUI.Borders.empty(15, 20, 0, 0));
     myEmptyPanel.setBorder(null);
@@ -290,7 +287,7 @@ public class PluginDetailsPageComponent extends MultiPanel {
       myRating =
         ListPluginComponent.createRatingLabel(panel1, null, "", AllIcons.Plugins.Rating, ListPluginComponent.GRAY_COLOR, true);
     }
-    myVendor = new LinkPanel(panel1, false, true, null, TextHorizontalLayout.FIX_LABEL);
+    myAuthor = new LinkPanel(panel1, false, true, null, TextHorizontalLayout.FIX_LABEL);
 
     myEnabledForProject = new JLabel();
     myEnabledForProject.setHorizontalTextPosition(SwingConstants.LEFT);
@@ -554,13 +551,20 @@ public class PluginDetailsPageComponent extends MultiPanel {
     }
 
     String vendor = myPlugin.isBundled() ? null : StringUtil.trim(myPlugin.getVendor());
+    String organization = myPlugin.isBundled() ? null : StringUtil.trim(myPlugin.getOrganization());
     if (StringUtil.isEmptyOrSpaces(vendor)) {
-      myVendor.hide();
+      myAuthor.hide();
     }
     else {
-      myVendor.show(vendor, () -> mySearchListener
-        .linkSelected(null,
-                      SearchWords.ORGANIZATION.getValue() + (vendor.indexOf(' ') == -1 ? vendor : StringUtil.wrapWithDoubleQuote(vendor))));
+      if (StringUtil.isEmptyOrSpaces(organization)) {
+        myAuthor.show(vendor, null);
+      } else {
+        myAuthor.show(organization, () -> mySearchListener.linkSelected(
+          null,
+          SearchWords.ORGANIZATION.getValue() +
+          (organization.indexOf(' ') == -1 ? organization : StringUtil.wrapWithDoubleQuote(organization))
+        ));
+      }
     }
 
     showLicensePanel();

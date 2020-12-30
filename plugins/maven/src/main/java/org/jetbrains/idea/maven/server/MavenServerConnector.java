@@ -2,7 +2,12 @@
 package org.jetbrains.idea.maven.server;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.text.StringUtil;
@@ -10,6 +15,8 @@ import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.concurrency.AsyncPromise;
+import org.jetbrains.idea.maven.execution.SyncBundle;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.model.MavenModel;
 import org.jetbrains.idea.maven.utils.MavenLog;
@@ -22,36 +29,40 @@ import java.util.List;
 
 public class MavenServerConnector implements @NotNull Disposable {
   public static final Logger LOG = Logger.getInstance(MavenServerConnector.class);
+  private final Object mutex = new Object();
 
   private final RemoteMavenServerLogger myLogger = new RemoteMavenServerLogger();
   private final RemoteMavenServerDownloadListener
     myDownloadListener = new RemoteMavenServerDownloadListener();
 
+  private final Project myProject;
   private final MavenServerManager myManager;
   private final Integer myDebugPort;
 
   private boolean myLoggerExported;
   private boolean myDownloadListenerExported;
   private final Sdk myJdk;
-  private final MavenDistribution myDistribution;
+  private @NotNull final MavenDistribution myDistribution;
   private final String myVmOptions;
   private int connectedProjects;
 
   private MavenRemoteProcessSupportFactory.MavenRemoteProcessSupport mySupport;
-  private MavenServer myMavenServer;
+  private final AsyncPromise<MavenServer> myServerPromise;
 
 
-  public MavenServerConnector(@NotNull MavenServerManager manager,
+  public MavenServerConnector(@NotNull Project project,
+                              @NotNull MavenServerManager manager,
                               @NotNull Sdk jdk,
                               @NotNull String vmOptions,
                               @Nullable Integer debugPort,
                               @NotNull MavenDistribution mavenDistribution) {
-
+    myProject = project;
     myManager = manager;
     myDebugPort = debugPort;
     myDistribution = mavenDistribution;
     myVmOptions = vmOptions;
     myJdk = jdk;
+    myServerPromise = connect();
   }
 
   public boolean isCompatibleWith(Sdk jdk, String vmOptions, MavenDistribution distribution) {
@@ -64,54 +75,58 @@ public class MavenServerConnector implements @NotNull Disposable {
     return StringUtil.equals(vmOptions, myVmOptions);
   }
 
-  void connect(Project project) {
-    if (mySupport != null || myMavenServer != null) {
-      connectedProjects += 1;
-      return;
-    }
-    try {
-      if (myDebugPort != null) {
-        //simple connection using JavaDebuggerConsoleFilterProvider
-        //noinspection UseOfSystemOutOrSystemErr
-        System.out.println("Listening for transport dt_socket at address: " + myDebugPort);
+  //@SuppressWarnings("SSBasedInspection") //need tests refactoring
+  private AsyncPromise<MavenServer> connect() {
+    AsyncPromise<MavenServer> serverPromise = new AsyncPromise<>();
+
+    serverPromise.onError(e -> {
+    }); //Promise w/o error handler sends all exceptions to analyzer, we don't need them
+
+    Runnable startRunnable = () -> {
+      StartServerTask task = new StartServerTask(serverPromise);
+      if(ApplicationManager.getApplication().isUnitTestMode()) {
+        task.run(null);
+      } else {
+        task.queue();
       }
+    };
 
-      mySupport = getSupportFactory(project).create(myJdk, myVmOptions, myDistribution, project, myDebugPort);
-
-      myMavenServer = mySupport.acquire(this, "");
-      myLoggerExported = MavenRemoteObjectWrapper.doWrapAndExport(myLogger) != null;
-      if (!myLoggerExported) throw new RemoteException("Cannot export logger object");
-
-      myDownloadListenerExported = MavenRemoteObjectWrapper.doWrapAndExport(myDownloadListener) != null;
-      if (!myDownloadListenerExported) throw new RemoteException("Cannot export download listener object");
-
-      myMavenServer.set(myLogger, myDownloadListener, MavenRemoteObjectWrapper.ourToken);
+    //noinspection SSBasedInspection
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      startRunnable.run();
     }
-    catch (Exception e) {
-      if (mySupport != null) {
-        try {
-          shutdown(false);
+    else {
+      ApplicationManager.getApplication().invokeLater(startRunnable);
+    }
+    return serverPromise;
+  }
+
+  private MavenServer getServer() {
+    try {
+      synchronized (myServerPromise) {
+        while (!myServerPromise.isDone()) {
+          myServerPromise.wait(100);
+          if(myProject.isDisposed()){
+            throw new CannotStartServerException("Project already disposed");
+          }
+          ProgressManager.checkCanceled();
         }
-        catch (Throwable ignored) {
-        }
+        return myServerPromise.get();
+      }
+    }
+    catch (ProcessCanceledException e) {
+      throw e;
+    }
+    catch (Throwable e) {
+      try {
+        shutdown(false);
+      }
+      catch (Throwable ignored) {
       }
       cleanUp();
       myManager.cleanUp(this);
       throw new CannotStartServerException(e);
     }
-  }
-
-  @NotNull
-  private static MavenRemoteProcessSupportFactory getSupportFactory(Project project) {
-    MavenRemoteProcessSupportFactory[] factories = MavenRemoteProcessSupportFactory.MAVEN_SERVER_SUPPORT_EP_NAME.getExtensions();
-    List<MavenRemoteProcessSupportFactory> aFactories = ContainerUtil.filter(factories, factory -> factory.isApplicable(project));
-    if (aFactories.isEmpty()) {
-      return new LocalMavenRemoteProcessSupportFactory();
-    }
-    if (aFactories.size() > 1) {
-      LOG.warn("More than one MavenRemoteProcessSupportFactory is applicable: " + aFactories);
-    }
-    return aFactories.get(0);
   }
 
   private void cleanUp() {
@@ -133,16 +148,15 @@ public class MavenServerConnector implements @NotNull Disposable {
       }
       myDownloadListenerExported = false;
     }
-    myMavenServer = null;
-    mySupport = null;
+
   }
 
-  public MavenServerEmbedder createEmbedder(MavenEmbedderSettings settings) throws RemoteException {
-    return myMavenServer.createEmbedder(settings, MavenRemoteObjectWrapper.ourToken);
+  MavenServerEmbedder createEmbedder(MavenEmbedderSettings settings) throws RemoteException {
+    return getServer().createEmbedder(settings, MavenRemoteObjectWrapper.ourToken);
   }
 
-  public MavenServerIndexer createIndexer() throws RemoteException {
-    return myMavenServer.createIndexer(MavenRemoteObjectWrapper.ourToken);
+  MavenServerIndexer createIndexer() throws RemoteException {
+    return getServer().createIndexer(MavenRemoteObjectWrapper.ourToken);
   }
 
 
@@ -157,7 +171,7 @@ public class MavenServerConnector implements @NotNull Disposable {
   @NotNull
   public MavenModel interpolateAndAlignModel(final MavenModel model, final File basedir) {
     return perform(() -> {
-      MavenModel m = myMavenServer.interpolateAndAlignModel(model, basedir, MavenRemoteObjectWrapper.ourToken);
+      MavenModel m = getServer().interpolateAndAlignModel(model, basedir, MavenRemoteObjectWrapper.ourToken);
       RemotePathTransformerFactory.Transformer transformer = RemotePathTransformerFactory.createForProject(basedir.getPath());
       if (transformer != RemotePathTransformerFactory.Transformer.ID) {
         new MavenBuildPathsChange((String s) -> transformer.toIdePath(s)).perform(m);
@@ -167,7 +181,7 @@ public class MavenServerConnector implements @NotNull Disposable {
   }
 
   public MavenModel assembleInheritance(final MavenModel model, final MavenModel parentModel) {
-    return perform(() -> myMavenServer.assembleInheritance(model, parentModel, MavenRemoteObjectWrapper.ourToken));
+    return perform(() -> getServer().assembleInheritance(model, parentModel, MavenRemoteObjectWrapper.ourToken));
   }
 
   public ProfileApplicationResult applyProfiles(final MavenModel model,
@@ -175,13 +189,15 @@ public class MavenServerConnector implements @NotNull Disposable {
                                                 final MavenExplicitProfiles explicitProfiles,
                                                 final Collection<String> alwaysOnProfiles) {
     return perform(
-      () -> myMavenServer.applyProfiles(model, basedir, explicitProfiles, alwaysOnProfiles, MavenRemoteObjectWrapper.ourToken));
+      () -> getServer().applyProfiles(model, basedir, explicitProfiles, alwaysOnProfiles, MavenRemoteObjectWrapper.ourToken));
   }
 
 
   void shutdown(boolean wait) {
-    if (connectedProjects-- > 0) {
-      return;
+    synchronized (mutex){
+      if (connectedProjects-- > 0) {
+        return;
+      }
     }
     shutdownForce(wait);
   }
@@ -190,8 +206,10 @@ public class MavenServerConnector implements @NotNull Disposable {
   @ApiStatus.Internal
   void shutdownForce(boolean wait) {
     myManager.unregisterConnector(this);
-    if (mySupport != null) {
-      mySupport.stopAll(wait);
+    MavenRemoteProcessSupportFactory.MavenRemoteProcessSupport support = mySupport;
+    if (support != null) {
+      support.stopAll(wait);
+      mySupport = null;
     }
     cleanUp();
   }
@@ -261,6 +279,40 @@ public class MavenServerConnector implements @NotNull Disposable {
     public void artifactDownloaded(File file, String relativePath) throws RemoteException {
       for (MavenServerDownloadListener each : myListeners) {
         each.artifactDownloaded(file, relativePath);
+      }
+    }
+  }
+
+  private class StartServerTask extends Task.Backgroundable {
+    private final AsyncPromise<MavenServer> myServerPromise;
+
+    StartServerTask(AsyncPromise<MavenServer> serverPromise) {
+      super(MavenServerConnector.this.myProject, SyncBundle.message("progress.title.starting.maven.server"), true);
+      myServerPromise = serverPromise;
+    }
+
+    @Override
+    public void run(@Nullable ProgressIndicator indicator) {
+      try {
+        if (myDebugPort != null) {
+          //noinspection UseOfSystemOutOrSystemErr
+          System.out.println("Listening for transport dt_socket at address: " + myDebugPort);
+        }
+        MavenRemoteProcessSupportFactory factory = MavenRemoteProcessSupportFactory.forProject(myProject);
+        mySupport = factory.create(myJdk, myVmOptions, myDistribution, myProject, myDebugPort);
+        MavenServer server = mySupport.acquire(this, "", indicator);
+        myLoggerExported = MavenRemoteObjectWrapper.doWrapAndExport(myLogger) != null;
+
+        if (!myLoggerExported) throw new RemoteException("Cannot export logger object");
+
+        myDownloadListenerExported = MavenRemoteObjectWrapper.doWrapAndExport(myDownloadListener) != null;
+        if (!myDownloadListenerExported) throw new RemoteException("Cannot export download listener object");
+
+        server.set(myLogger, myDownloadListener, MavenRemoteObjectWrapper.ourToken);
+        myServerPromise.setResult(server);
+      }
+      catch (Throwable e) {
+        myServerPromise.setError(e);
       }
     }
   }

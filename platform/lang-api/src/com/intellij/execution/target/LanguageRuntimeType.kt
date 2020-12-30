@@ -10,6 +10,7 @@ import com.intellij.openapi.util.NlsContexts
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import java.util.concurrent.CompletableFuture
+import java.util.function.Supplier
 
 /**
  * Contributed type for ["com.intellij.executionTargetLanguageRuntimeType"][EXTENSION_NAME] extension point
@@ -52,7 +53,12 @@ abstract class LanguageRuntimeType<C : LanguageRuntimeConfiguration>(id: String)
    */
   open fun volumeDescriptors(): List<VolumeDescriptor> = emptyList()
 
-  abstract fun createConfigurable(project: Project, config: C, target: TargetEnvironmentConfiguration): Configurable
+  abstract fun createConfigurable(
+    project: Project,
+    config: C,
+    targetEnvironmentType: TargetEnvironmentType<*>,
+    targetSupplier: Supplier<TargetEnvironmentConfiguration>,
+  ): Configurable
 
   abstract fun findLanguageRuntime(target: TargetEnvironmentConfiguration): C?
 

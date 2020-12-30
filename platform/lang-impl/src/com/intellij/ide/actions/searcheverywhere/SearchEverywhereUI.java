@@ -35,6 +35,7 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.psi.PsiElement;
@@ -1110,6 +1111,15 @@ public final class SearchEverywhereUI extends BigPopupUI implements DataProvider
       if (pattern.isEmpty()) return;
       emptyStatus.appendLine(getNotFoundText());
 
+      if (myHeader.getSelectedTab().canClearFilter()) {
+        ActionListener clearFiltersAction = e -> {
+          myHeader.getSelectedTab().clearFilter();
+          scheduleRebuildList();
+        };
+        emptyStatus.appendLine(IdeBundle.message("searcheverywhere.reset.filters"),
+                               SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES, clearFiltersAction);
+      }
+
       Optional.ofNullable(myProject)
         .map(project -> FindInProjectManager.getInstance(project))
         .filter(manager -> manager.isEnabled())
@@ -1119,8 +1129,10 @@ public final class SearchEverywhereUI extends BigPopupUI implements DataProvider
 
           String findInFilesText = IdeBundle.message("searcheverywhere.try.to.find.in.files");
           String findInFilesShortcut = KeymapUtil.getFirstKeyboardShortcutText("FindInPath");
-          emptyStatus.appendLine(findInFilesText, SimpleTextAttributes.LINK_ATTRIBUTES, findInFilesAction)
-            .appendText(" (" + findInFilesShortcut + ")");
+          emptyStatus.appendLine(findInFilesText, SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES, findInFilesAction);
+          if (StringUtil.isEmpty(findInFilesShortcut)) {
+            emptyStatus.appendText(" " + findInFilesShortcut);
+          }
         });
     }
 

@@ -812,36 +812,54 @@ public final class GenericsHighlightUtil {
 
   //http://docs.oracle.com/javase/specs/jls/se7/html/jls-8.html#jls-8.9.2
   static HighlightInfo checkAccessStaticFieldFromEnumConstructor(@NotNull PsiReferenceExpression expr, @NotNull JavaResolveResult result) {
-    final PsiElement resolved = result.getElement();
+    PsiField field = ObjectUtils.tryCast(result.getElement(), PsiField.class);
+    if (field == null) return null;
 
-    if (!(resolved instanceof PsiField)) return null;
-    if (!((PsiModifierListOwner)resolved).hasModifierProperty(PsiModifier.STATIC)) return null;
+    PsiClass enumClass = getEnumClassForExpressionInInitializer(expr);
+    if (enumClass == null || !isRestrictedStaticEnumField(field, enumClass)) return null;
+
+    String description = JavaErrorBundle.message(
+      "illegal.to.access.static.member.from.enum.constructor.or.instance.initializer",
+      HighlightMessageUtil.getSymbolName(field, result.getSubstitutor())
+    );
+
+    return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expr).descriptionAndTooltip(description).create();
+  }
+
+  /**
+   * @param field field to check
+   * @param enumClass an enum class returned from {@link #getEnumClassForExpressionInInitializer(PsiExpression)}
+   * @return true if given field cannot be referenced in constructors or instance initializers of given enum class.
+   */
+  public static boolean isRestrictedStaticEnumField(@NotNull PsiField field, @NotNull PsiClass enumClass) {
+    if (!field.hasModifierProperty(PsiModifier.STATIC)) return false;
+    if (field.getContainingClass() != enumClass) return false;
+
+    if (!JavaVersionService.getInstance().isAtLeast(field, JavaSdkVersion.JDK_1_6)) {
+      final PsiType type = field.getType();
+      if (type instanceof PsiClassType && ((PsiClassType)type).resolve() == enumClass) return false;
+    }
+
+    return !PsiUtil.isCompileTimeConstant(field);
+  }
+
+  /**
+   * @param expr expression to analyze
+   * @return a enum class, whose non-constant static fields cannot be used at given place, 
+   * null if there's no such restriction 
+   */
+  public static @Nullable PsiClass getEnumClassForExpressionInInitializer(@NotNull PsiExpression expr) {
     if (PsiImplUtil.getSwitchLabel(expr) != null) return null;
     final PsiMember constructorOrInitializer = PsiUtil.findEnclosingConstructorOrInitializer(expr);
     if (constructorOrInitializer == null) return null;
     if (constructorOrInitializer.hasModifierProperty(PsiModifier.STATIC)) return null;
-    final PsiClass aClass = constructorOrInitializer instanceof PsiEnumConstantInitializer ?
-                            (PsiClass)constructorOrInitializer : constructorOrInitializer.getContainingClass();
-    if (aClass == null || !(aClass.isEnum() || aClass instanceof PsiEnumConstantInitializer)) return null;
-    final PsiField field = (PsiField)resolved;
-    if (aClass instanceof PsiEnumConstantInitializer) {
-      if (field.getContainingClass() != aClass.getSuperClass()) return null;
-    } else if (field.getContainingClass() != aClass) return null;
-
-
-    if (!JavaVersionService.getInstance().isAtLeast(field, JavaSdkVersion.JDK_1_6)) {
-      final PsiType type = field.getType();
-      if (type instanceof PsiClassType && ((PsiClassType)type).resolve() == aClass) return null;
+    PsiClass enumClass = constructorOrInitializer instanceof PsiEnumConstantInitializer ?
+                      (PsiClass)constructorOrInitializer : constructorOrInitializer.getContainingClass();
+    if (enumClass instanceof PsiEnumConstantInitializer) {
+      enumClass = enumClass.getSuperClass();
     }
-
-    if (PsiUtil.isCompileTimeConstant(field)) return null;
-
-    String description = JavaErrorBundle.message(
-      "illegal.to.access.static.member.from.enum.constructor.or.instance.initializer",
-      HighlightMessageUtil.getSymbolName(resolved, result.getSubstitutor())
-    );
-
-    return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expr).descriptionAndTooltip(description).create();
+    if (enumClass == null || !enumClass.isEnum()) return null;
+    return enumClass;
   }
 
   static HighlightInfo checkEnumInstantiation(@NotNull PsiElement expression, @Nullable PsiClass aClass) {
@@ -1021,7 +1039,7 @@ public final class GenericsHighlightUtil {
         }
       }
       if (superMethod == null) {
-        if (languageLevel != LanguageLevel.JDK_14_PREVIEW && JavaPsiRecordUtil.getRecordComponentForAccessor(method) != null) {
+        if (JavaPsiRecordUtil.getRecordComponentForAccessor(method) != null) {
           return null;
         }
         String description = JavaErrorBundle.message("method.does.not.override.super");
@@ -1333,61 +1351,6 @@ public final class GenericsHighlightUtil {
         !((PsiTypeParameterListOwner)resolved).hasModifierProperty(PsiModifier.STATIC)) {
       final String message = JavaErrorBundle.message("text.improper.formed.type");
       return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(parent).descriptionAndTooltip(message).create();
-    }
-    return null;
-  }
-
-  static HighlightInfo checkCannotPassInner(@NotNull PsiJavaCodeReferenceElement ref) {
-    if (ref.getParent() instanceof PsiTypeElement) {
-      final PsiClass psiClass = PsiTreeUtil.getParentOfType(ref, PsiClass.class);
-      if (psiClass == null) return null;
-      if (PsiTreeUtil.isAncestor(psiClass.getExtendsList(), ref, false) ||
-          PsiTreeUtil.isAncestor(psiClass.getImplementsList(), ref, false)) {
-        final PsiElement qualifier = ref.getQualifier();
-        if (qualifier instanceof PsiJavaCodeReferenceElement && ((PsiJavaCodeReferenceElement)qualifier).resolve() == psiClass) {
-          final PsiJavaCodeReferenceElement referenceElement = PsiTreeUtil.getParentOfType(ref, PsiJavaCodeReferenceElement.class);
-          if (referenceElement == null) return null;
-          final PsiElement typeClass = referenceElement.resolve();
-          if (!(typeClass instanceof PsiClass)) return null;
-          final PsiElement resolve = ref.resolve();
-          final PsiClass containingClass = resolve != null ? ((PsiClass)resolve).getContainingClass() : null;
-          if (containingClass == null) return null;
-          PsiClass hiddenClass;
-          if (psiClass.isInheritor(containingClass, true)) {
-            hiddenClass = (PsiClass)resolve;
-          }
-          else {
-            hiddenClass = unqualifiedNestedClassReferenceAccessedViaContainingClassInheritance((PsiClass)typeClass, ((PsiClass)resolve).getExtendsList());
-            if (hiddenClass == null) {
-              hiddenClass = unqualifiedNestedClassReferenceAccessedViaContainingClassInheritance((PsiClass)typeClass, ((PsiClass)resolve).getImplementsList());
-            }
-          }
-          if (hiddenClass != null) {
-            final String message = JavaErrorBundle.message("text.class.is.not.accessible", hiddenClass.getName());
-            return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).description(message).range(ref).create();
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  private static PsiClass unqualifiedNestedClassReferenceAccessedViaContainingClassInheritance(@NotNull PsiClass containingClass,
-                                                                                               @Nullable PsiReferenceList referenceList) {
-    if (referenceList != null) {
-      for (PsiJavaCodeReferenceElement referenceElement : referenceList.getReferenceElements()) {
-        if (!referenceElement.isQualified()) {
-          final PsiElement superClass = referenceElement.resolve();
-          if (superClass instanceof PsiClass) {
-            final PsiClass superContainingClass = ((PsiClass)superClass).getContainingClass();
-            if (superContainingClass != null &&
-                InheritanceUtil.isInheritorOrSelf(containingClass, superContainingClass, true) &&
-                !PsiTreeUtil.isAncestor(superContainingClass, containingClass, true)) {
-              return (PsiClass)superClass;
-            }
-          }
-        }
-      }
     }
     return null;
   }

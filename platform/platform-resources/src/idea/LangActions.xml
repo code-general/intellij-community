@@ -527,6 +527,7 @@
 
     <group id="StateWidgetBarGroup" popup="false">
       <action id="StateWidgetRunConfigurationsAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetRunConfigurationsAction"/>
+      <action id="StateWidgetRerunAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetRerunAction"/>
       <group id="StateWidgetAdditionalActions"/>
       <group id="StateWidgetProcessesActionGroup"/>
       <action id="StateWidgetStop" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetStopAction" icon="AllIcons.Actions.Suspend"/>
@@ -992,6 +993,31 @@
       <reference ref="RunToCursor"/>
       <separator/>
       <reference ref="EvaluateExpression" />
+    </group>
+
+    <group id="XDebugger.ToolWindow.TopToolbar3">
+      <reference ref="Resume"/>
+      <reference ref="StepOver"/>
+      <reference ref="StepInto"/>
+      <reference ref="StepOut"/>
+      <separator/>
+      <reference ref="Rerun"/>
+      <reference ref="Stop"/>
+      <separator/>
+      <reference ref="ViewBreakpoints"/>
+      <reference ref="XDebugger.MuteBreakpoints"/>
+      <group id="XDebugger.ToolWindow.TopToolbar3.Extra" class="com.intellij.xdebugger.impl.ui.MorePopupGroup">
+        <reference ref="ForceStepOver"/>
+        <reference ref="ForceStepInto"/>
+        <reference ref="SmartStepInto"/>
+        <separator/>
+        <reference ref="RunToCursor"/>
+        <reference ref="ForceRunToCursor"/>
+        <separator/>
+        <reference ref="Pause"/>
+        <reference ref="ShowExecutionPoint"/>
+        <separator/>
+      </group>
     </group>
 
     <group id="XDebugger.ToolWindow.LeftToolbar">

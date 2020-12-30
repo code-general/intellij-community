@@ -182,7 +182,8 @@ public class ListPluginComponent extends JPanel {
           myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
         }
         else {
-          if (Registry.is("ide.plugins.per.project", false)) {
+          if (Registry.is("ide.plugins.per.project", false) &&
+              !Registry.is("ide.plugins.per.project.use.checkboxes", false)) {
             myEnableDisableButton = SelectionBasedPluginModelAction.createGearButton(
               action -> createEnableDisableAction(action, List.of(this)),
               () -> createUninstallAction(List.of(this))
@@ -794,10 +795,6 @@ public class ListPluginComponent extends JPanel {
       }
     }
     else if (!restart && !update) {
-      if (keyCode == KeyEvent.VK_SPACE && event.getComponent() instanceof JCheckBox) {
-        return;
-      }
-
       DumbAwareAction action = keyCode == KeyEvent.VK_SPACE && event.getModifiersEx() == 0 ?
                                createEnableDisableAction(getEnableDisableAction(selection), selection) :
                                keyCode == EventHandler.DELETE_CODE ?
@@ -1074,7 +1071,12 @@ public class ListPluginComponent extends JPanel {
     }
 
     private void setBaselineBounds(int x, int y, @NotNull Component component, @NotNull Dimension size) {
-      component.setBounds(x, y - component.getBaseline(size.width, size.height), size.width, size.height);
+      if (component instanceof ActionToolbar) {
+        component.setBounds(x, getInsets().top - JBUI.scale(1), size.width, size.height);
+      }
+      else {
+        component.setBounds(x, y - component.getBaseline(size.width, size.height), size.width, size.height);
+      }
     }
 
     public void setIconComponent(@NotNull JComponent iconComponent) {

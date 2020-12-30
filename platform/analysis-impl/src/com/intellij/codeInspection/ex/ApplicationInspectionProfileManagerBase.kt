@@ -7,10 +7,15 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.options.SchemeManagerFactory
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.project.ProjectManagerListener
 import com.intellij.profile.codeInspection.BaseInspectionProfileManager
 import com.intellij.profile.codeInspection.InspectionProfileLoadUtil
 import com.intellij.profile.codeInspection.InspectionProfileManager
 import com.intellij.profile.codeInspection.InspectionProfileProcessor
+import com.intellij.psi.search.scope.packageSet.NamedScopeManager
+import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.serviceContainer.NonInjectable
 import org.jdom.JDOMException
 import org.jetbrains.annotations.TestOnly
@@ -23,6 +28,19 @@ import java.util.function.Function
 
 open class ApplicationInspectionProfileManagerBase @TestOnly @NonInjectable constructor(schemeManagerFactory: SchemeManagerFactory) : BaseInspectionProfileManager(
   ApplicationManager.getApplication().messageBus), InspectionProfileManager {
+
+  init {
+    val app = ApplicationManager.getApplication()
+    app.messageBus.connect().subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
+      override fun projectOpened(project: Project) {
+        val appScopeListener = NamedScopesHolder.ScopeListener {
+          profiles.forEach { it.scopesChanged() }
+        }
+        NamedScopeManager.getInstance(project).addScopeListener(appScopeListener, project)
+      }
+    })
+  }
+
   override val schemeManager = schemeManagerFactory.create(InspectionProfileManager.INSPECTION_DIR, object : InspectionProfileProcessor() {
     override fun getSchemeKey(attributeProvider: Function<String, String?>, fileNameWithoutExtension: String) = fileNameWithoutExtension
 

@@ -18,6 +18,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.util.NlsActions
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.TextWithMnemonic
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowId
@@ -186,11 +187,11 @@ object LessonUtil {
     return x != 0
   }
 
-  fun LessonContext.highlightBreakpointGutter(logicalPosition: LogicalPosition) {
+  fun LessonContext.highlightBreakpointGutter(logicalPosition: () -> LogicalPosition) {
     task {
       triggerByPartOfComponent<EditorGutterComponentEx> l@{ ui ->
         if (CommonDataKeys.EDITOR.getData(ui as DataProvider) != editor) return@l null
-        val y = editor.visualLineToY(editor.logicalToVisualPosition(logicalPosition).line)
+        val y = editor.visualLineToY(editor.logicalToVisualPosition(logicalPosition()).line)
         return@l Rectangle(20, y, ui.width - 26, editor.lineHeight)
       }
     }
@@ -226,11 +227,15 @@ fun TaskRuntimeContext.lineWithBreakpoints(): Set<Int> {
   }.toSet()
 }
 
+val defaultRestoreDelay: Int
+  get() = Registry.intValue("ift.default.restore.delay")
+
 /**
  * @param [restoreId] where to restore, `null` means the previous task
  * @param [restoreRequired] returns true iff restore is needed
  */
-fun TaskContext.restoreAfterStateBecomeFalse(restoreId: TaskContext.TaskId? = null, restoreRequired: TaskRuntimeContext.() -> Boolean) {
+fun TaskContext.restoreAfterStateBecomeFalse(restoreId: TaskContext.TaskId? = null,
+                                             restoreRequired: TaskRuntimeContext.() -> Boolean) {
   var restoreIsPossible = false
   restoreState(restoreId) {
     val required = restoreRequired()

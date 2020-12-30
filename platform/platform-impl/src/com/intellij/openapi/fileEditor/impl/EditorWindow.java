@@ -16,6 +16,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.ScrollingModel;
+import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.fileEditor.TextEditor;
@@ -33,6 +34,7 @@ import com.intellij.ui.tabs.impl.JBTabsImpl;
 import com.intellij.ui.tabs.impl.tabsLayout.TabsLayoutInfo;
 import com.intellij.util.IconUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.ui.EmptyIcon;
@@ -54,12 +56,14 @@ public final class EditorWindow {
   private static final Logger LOG = Logger.getInstance(EditorWindow.class);
 
   public static final DataKey<EditorWindow> DATA_KEY = DataKey.create("editorWindow");
+  public static final Key<Boolean> HIDE_TABS = Key.create("HIDE_TABS");
 
   JPanel myPanel;
   private final @NotNull EditorTabbedContainer myTabbedPane;
   @NotNull
   private final EditorsSplitters myOwner;
 
+  private boolean alwaysHideTabs;
   private boolean myIsDisposed;
   public static final Key<Integer> INITIAL_INDEX_KEY = Key.create("initial editor index");
   // Metadata to support editor tab drag&drop process: initial index
@@ -99,11 +103,18 @@ public final class EditorWindow {
     if (myOwner.getCurrentWindow() == null) {
       myOwner.setCurrentWindow(this, false);
     }
+    updateTabsVisibility();
+  }
+
+  void updateTabsVisibility() {
     updateTabsVisibility(UISettings.getInstance());
   }
 
   void updateTabsVisibility(@NotNull UISettings settings) {
-    myTabbedPane.getTabs().getPresentation().setHideTabs(settings.getEditorTabPlacement() == UISettings.TABS_NONE || settings.getPresentationMode());
+    myTabbedPane.getTabs().getPresentation()
+      .setHideTabs(myOwner.isFloating() && alwaysHideTabs
+                   || settings.getEditorTabPlacement() == UISettings.TABS_NONE
+                   || settings.getPresentationMode());
   }
 
   public boolean isShowing() {
@@ -314,8 +325,8 @@ public final class EditorWindow {
     myTabbedPane.setStyleAt(index, style);
   }
 
-  void setWaveColor(int index, @Nullable Color color) {
-    myTabbedPane.setWaveColor(index, color);
+  void setTextAttributes(int index, @Nullable TextAttributes attributes) {
+    myTabbedPane.setTextAttributes(index, attributes);
   }
 
   private void setTitleAt(int index, @NlsContexts.TabTitle @NotNull String text) {
@@ -560,8 +571,25 @@ public final class EditorWindow {
       }
       myOwner.updateFileStyle(editor.getFile());
       myOwner.setCurrentWindow(this, false);
+      hideTabsIfNeeded(editor);
     }
     myOwner.validate();
+  }
+
+  private void hideTabsIfNeeded(@NotNull EditorWithProviderComposite editor) {
+    alwaysHideTabs = false; //default state
+
+    if (myOwner.isFloating()) {
+      boolean hideTabs = needHideTabs(editor.getEditors());
+      if (hideTabs) {
+        alwaysHideTabs = true;
+        updateTabsVisibility();
+      }
+    }
+  }
+
+  private static boolean needHideTabs(@NotNull FileEditor @NotNull [] editors) {
+    return ContainerUtil.exists(editors, e -> HIDE_TABS.isIn(e) && HIDE_TABS.get(e).booleanValue());
   }
 
   private boolean splitAvailable() {

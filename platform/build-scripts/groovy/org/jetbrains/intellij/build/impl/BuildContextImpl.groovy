@@ -79,7 +79,7 @@ final class BuildContextImpl extends BuildContext {
     fullBuildNumber = "$applicationInfo.productCode-$buildNumber"
     systemSelector = productProperties.getSystemSelector(applicationInfo, buildNumber)
 
-    bootClassPathJarNames = List.of("bootstrap.jar", "extensions.jar", "util.jar", "jdom.jar", "log4j.jar", "jna.jar")
+    bootClassPathJarNames = List.of("bootstrap.jar", "util.jar", "jdom.jar", "log4j.jar", "jna.jar")
     dependenciesProperties = new DependenciesProperties(this)
   }
 
@@ -196,6 +196,16 @@ final class BuildContextImpl extends BuildContext {
   @Override
   void notifyArtifactBuilt(String artifactPath) {
     compilationContext.notifyArtifactBuilt(artifactPath)
+  }
+
+  @Override
+  void notifyArtifactBuilt(Path artifactPath) {
+    compilationContext.notifyArtifactWasBuilt(artifactPath)
+  }
+
+  @Override
+  void notifyArtifactWasBuilt(Path artifactPath) {
+    compilationContext.notifyArtifactWasBuilt(artifactPath)
   }
 
   @Override

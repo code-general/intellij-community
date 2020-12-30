@@ -624,10 +624,6 @@ internal class WorkspaceEntityStorageBuilderImpl(
     return res
   }
 
-  override fun resetChanges() {
-    this.changeLog.clear()
-  }
-
   override fun toStorage(): WorkspaceEntityStorageImpl {
     val newEntities = entitiesByType.toImmutable()
     val newRefs = refs.toImmutable()
@@ -800,7 +796,10 @@ internal sealed class AbstractEntityStorage : WorkspaceEntityStorage {
 
   override fun <E : WorkspaceEntityWithPersistentId, R : WorkspaceEntity> referrers(id: PersistentEntityId<E>,
                                                                                     entityClass: Class<R>): Sequence<R> {
-    TODO("Not yet implemented")
+    val classId = entityClass.toClassId()
+    return indexes.softLinks.index.getKeys(id).asSequence()
+      .filter { it.clazz == classId }
+      .map { entityDataByIdOrDie(it).createEntity(this) as R }
   }
 
   override fun <E : WorkspaceEntityWithPersistentId> resolve(id: PersistentEntityId<E>): E? {
@@ -934,6 +933,7 @@ internal sealed class AbstractEntityStorage : WorkspaceEntityStorage {
   }
 
   private fun checkStrongConnection(connectionKeys: IntSet, entityFamilyClass: Int, connectionTo: Int) {
+    if (connectionKeys.isEmpty()) return
 
     var counter = 0
     val entityFamily = entitiesByType.entityFamilies[entityFamilyClass]

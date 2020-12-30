@@ -15,6 +15,7 @@ import com.intellij.ui.*;
 import com.intellij.ui.mac.foundation.Foundation;
 import com.intellij.ui.paint.LinePainter2D;
 import com.intellij.ui.paint.PaintUtil.RoundingMode;
+import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.Semaphore;
@@ -1450,50 +1451,48 @@ public final class UIUtil {
     }
   }
 
-  @SuppressWarnings("UnregisteredNamedColor")
+  @SuppressWarnings({"UnregisteredNamedColor", "UseJBColor"})
   public static void drawSearchMatch(@NotNull Graphics2D g,
                                      final float startX,
                                      final float endX,
                                      final int height) {
-    Color c1 = JBColor.namedColor("SearchMatch.startBackground", JBColor.namedColor("SearchMatch.startColor", 0xffeaa2));
-    Color c2 = JBColor.namedColor("SearchMatch.endBackground", JBColor.namedColor("SearchMatch.endColor", 0xffd042));
+    Color c1 = JBColor.namedColor("SearchMatch.startBackground", JBColor.namedColor("SearchMatch.startColor", new Color(0xb3ffeaa2, true)));
+    Color c2 = JBColor.namedColor("SearchMatch.endBackground", JBColor.namedColor("SearchMatch.endColor", new Color(0xb3ffd042, true)));
     drawSearchMatch(g, startX, endX, height, c1, c2);
   }
 
   public static void drawSearchMatch(@NotNull Graphics2D g, float startXf, float endXf, int height, Color c1, Color c2) {
-    GraphicsConfig config = new GraphicsConfig(g);
-    float alpha = JBUI.getInt("SearchMatch.transparency", 70) / 100f;
-    alpha = alpha < 0 || alpha > 1 ? 0.7f : alpha;
-    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-    g.setPaint(getGradientPaint(startXf, 2, c1, startXf, height - 5, c2));
+    Graphics2D g2 = (Graphics2D)g.create();
+    try {
+      g2.setPaint(getGradientPaint(startXf, 2, c1, startXf, height - 5, c2));
 
-    if (JreHiDpiUtil.isJreHiDPI(g)) {
-      GraphicsConfig c = GraphicsUtil.setupRoundedBorderAntialiasing(g);
-      g.fill(new RoundRectangle2D.Float(startXf, 2, endXf - startXf, height - 4, 5, 5));
-      c.restore();
-      config.restore();
-      return;
+      if (JreHiDpiUtil.isJreHiDPI(g2)) {
+        GraphicsUtil.setupRoundedBorderAntialiasing(g2);
+        g2.fill(new RoundRectangle2D.Float(startXf, 2, endXf - startXf, height - 4, 5, 5));
+      }
+      else {
+        int startX = (int)startXf;
+        int endX = (int)endXf;
+
+        g2.fillRect(startX, 3, endX - startX, height - 5);
+
+        boolean drawRound = endXf - startXf > 4;
+        if (drawRound) {
+          LinePainter2D.paint(g2, startX - 1, 4, startX - 1, height - 4);
+          LinePainter2D.paint(g2, endX, 4, endX, height - 4);
+
+          g2.setColor(new Color(100, 100, 100, 50));
+          LinePainter2D.paint(g2, startX - 1, 4, startX - 1, height - 4);
+          LinePainter2D.paint(g2, endX, 4, endX, height - 4);
+
+          LinePainter2D.paint(g2, startX, 3, endX - 1, 3);
+          LinePainter2D.paint(g2, startX, height - 3, endX - 1, height - 3);
+        }
+      }
     }
-
-    int startX = (int)startXf;
-    int endX = (int)endXf;
-
-    g.fillRect(startX, 3, endX - startX, height - 5);
-
-    final boolean drawRound = endXf - startXf > 4;
-    if (drawRound) {
-      LinePainter2D.paint(g, startX - 1, 4, startX - 1, height - 4);
-      LinePainter2D.paint(g, endX, 4, endX, height - 4);
-
-      g.setColor(new Color(100, 100, 100, 50));
-      LinePainter2D.paint(g, startX - 1, 4, startX - 1, height - 4);
-      LinePainter2D.paint(g, endX, 4, endX, height - 4);
-
-      LinePainter2D.paint(g, startX, 3, endX - 1, 3);
-      LinePainter2D.paint(g, startX, height - 3, endX - 1, height - 3);
+    finally {
+      g2.dispose();
     }
-
-    config.restore();
   }
 
   private static void drawBoringDottedLine(final @NotNull Graphics2D g,
@@ -1998,32 +1997,11 @@ public final class UIUtil {
     return StartupUiUtil.getLabelFont();
   }
 
-  /**
-   * @deprecated use getBorderColor instead
-   */
-  @Deprecated
-  public static @NotNull Color getBorderInactiveColor() {
-    return JBColor.border();
-  }
-
-  /**
-   * @deprecated use getBorderColor instead
-   */
-  @Deprecated
-  public static @NotNull Color getBorderActiveColor() {
-    return JBColor.border();
-  }
-
-  /**
-   * @deprecated use getBorderColor instead
-   */
-  @Deprecated
-  public static @NotNull Color getBorderSeparatorColor() {
-    return JBColor.border();
-  }
-
   public static @Nullable StyleSheet loadStyleSheet(@Nullable URL url) {
-    if (url == null) return null;
+    if (url == null) {
+      return null;
+    }
+
     try {
       StyleSheet styleSheet = new StyleSheet();
       styleSheet.loadRules(new InputStreamReader(url.openStream(), StandardCharsets.UTF_8), url);
@@ -3127,39 +3105,6 @@ public final class UIUtil {
   }
 
 
-  private static final Color BACKGROUND = new JBColor(0xFFFFFF, 0x3C3F41);
-  private static final Color LIST_BACKGROUND = JBColor.namedColor("List.background", BACKGROUND);
-  private static final Color TREE_BACKGROUND = JBColor.namedColor("Tree.background", BACKGROUND);
-  private static final Color TABLE_BACKGROUND = JBColor.namedColor("Table.background", BACKGROUND);
-
-  private static final class FocusedSelection {
-    private static final Color BACKGROUND = new JBColor(0x3875D6, 0x2F65CA);
-    private static final Color TREE_BACKGROUND = JBColor.namedColor("Tree.selectionBackground", BACKGROUND);
-    private static final Color TABLE_BACKGROUND = JBColor.namedColor("Table.selectionBackground", BACKGROUND);
-  }
-
-  private static final class UnfocusedSelection {
-    private static final Color BACKGROUND = new JBColor(0xD4D4D4, 0x0D293E);
-    private static final Color LIST_BACKGROUND = JBColor.namedColor("List.selectionInactiveBackground", BACKGROUND);
-    private static final Color TREE_BACKGROUND = JBColor.namedColor("Tree.selectionInactiveBackground", BACKGROUND);
-    private static final Color TABLE_BACKGROUND = JBColor.namedColor("Table.selectionInactiveBackground", BACKGROUND);
-  }
-
-  private static final class FocusedHover {
-    private static final Color BACKGROUND = new JBColor(0xEDF5FC, 0x464A4D);
-    private static final Color LIST_BACKGROUND = JBColor.namedColor("List.hoverBackground", BACKGROUND);
-    private static final Color TREE_BACKGROUND = JBColor.namedColor("Tree.hoverBackground", BACKGROUND);
-    private static final Color TABLE_BACKGROUND = JBColor.namedColor("Table.hoverBackground", BACKGROUND);
-  }
-
-  private static final class UnfocusedHover {
-    private static final Color BACKGROUND = new JBColor(0xF5F5F5, 0x464A4D);
-    private static final Color LIST_BACKGROUND = JBColor.namedColor("List.hoverInactiveBackground", BACKGROUND);
-    private static final Color TREE_BACKGROUND = JBColor.namedColor("Tree.hoverInactiveBackground", BACKGROUND);
-    private static final Color TABLE_BACKGROUND = JBColor.namedColor("Table.hoverInactiveBackground", BACKGROUND);
-  }
-
-
   // List
 
   public static @NotNull Font getListFont() {
@@ -3169,18 +3114,18 @@ public final class UIUtil {
 
   // background
 
+  /**
+   * @see RenderingUtil#getBackground(JList)
+   */
   public static @NotNull Color getListBackground() {
-    return LIST_BACKGROUND;
+    return JBUI.CurrentTheme.List.BACKGROUND;
   }
 
-  private static final JBValue SELECTED_ITEM_ALPHA = new JBValue.UIInteger("List.selectedItemAlpha", 75);
-
+  /**
+   * @see RenderingUtil#getSelectionBackground(JList)
+   */
   public static @NotNull Color getListSelectionBackground(boolean focused) {
-    if (!focused) return UnfocusedSelection.LIST_BACKGROUND;
-    Color color = UIManager.getColor("List.selectionBackground");
-    double alpha = SELECTED_ITEM_ALPHA.getFloat() / 100.0;
-    //noinspection UseJBColor
-    return isUnderDefaultMacTheme() && alpha >= 0 && alpha <= 1.0 ? ColorUtil.mix(Color.WHITE, color, alpha) : color;
+    return JBUI.CurrentTheme.List.Selection.background(focused);
   }
 
   public static @NotNull Dimension updateListRowHeight(@NotNull Dimension size) {
@@ -3188,6 +3133,9 @@ public final class UIUtil {
     return size;
   }
 
+  /**
+   * @see RenderingUtil#getBackground(JList, boolean)
+   */
   public static @NotNull Color getListBackground(boolean selected, boolean focused) {
     return !selected ? getListBackground() : getListSelectionBackground(focused);
   }
@@ -3216,23 +3164,25 @@ public final class UIUtil {
     return getListSelectionBackground(false);
   }
 
-  @ApiStatus.Experimental
-  public static @NotNull Color getListHoverBackground(boolean focused) {
-    return focused ? FocusedHover.LIST_BACKGROUND : UnfocusedHover.LIST_BACKGROUND;
-  }
-
   // foreground
 
+  /**
+   * @see RenderingUtil#getForeground(JList)
+   */
   public static @NotNull Color getListForeground() {
-    return UIManager.getColor("List.foreground");
+    return JBUI.CurrentTheme.List.FOREGROUND;
   }
 
+  /**
+   * @see RenderingUtil#getSelectionForeground(JList)
+   */
   public static @NotNull Color getListSelectionForeground(boolean focused) {
-    Color foreground = UIManager.getColor(focused ? "List.selectionForeground" : "List.selectionInactiveForeground");
-    if (focused && foreground == null) foreground = UIManager.getColor("List[Selected].textForeground");  // Nimbus
-    return foreground != null ? foreground : getListForeground();
+    return JBUI.CurrentTheme.List.Selection.foreground(focused);
   }
 
+  /**
+   * @see RenderingUtil#getForeground(JList, boolean)
+   */
   public static @NotNull Color getListForeground(boolean selected, boolean focused) {
     return !selected ? getListForeground() : getListSelectionForeground(focused);
   }
@@ -3262,14 +3212,23 @@ public final class UIUtil {
 
   // background
 
+  /**
+   * @see RenderingUtil#getBackground(JTree)
+   */
   public static @NotNull Color getTreeBackground() {
-    return TREE_BACKGROUND;
+    return JBUI.CurrentTheme.Tree.BACKGROUND;
   }
 
+  /**
+   * @see RenderingUtil#getSelectionBackground(JTree)
+   */
   public static @NotNull Color getTreeSelectionBackground(boolean focused) {
-    return focused ? FocusedSelection.TREE_BACKGROUND : UnfocusedSelection.TREE_BACKGROUND;
+    return JBUI.CurrentTheme.Tree.Selection.background(focused);
   }
 
+  /**
+   * @see RenderingUtil#getBackground(JTree, boolean)
+   */
   public static @NotNull Color getTreeBackground(boolean selected, boolean focused) {
     return !selected ? getTreeBackground() : getTreeSelectionBackground(focused);
   }
@@ -3290,22 +3249,25 @@ public final class UIUtil {
     return getTreeSelectionBackground(false);
   }
 
-  @ApiStatus.Experimental
-  public static @NotNull Color getTreeHoverBackground(boolean focused) {
-    return focused ? FocusedHover.TREE_BACKGROUND : UnfocusedHover.TREE_BACKGROUND;
-  }
-
   // foreground
 
+  /**
+   * @see RenderingUtil#getForeground(JTree)
+   */
   public static @NotNull Color getTreeForeground() {
-    return UIManager.getColor("Tree.foreground");
+    return JBUI.CurrentTheme.Tree.FOREGROUND;
   }
 
+  /**
+   * @see RenderingUtil#getSelectionForeground(JTree)
+   */
   public static @NotNull Color getTreeSelectionForeground(boolean focused) {
-    Color foreground = UIManager.getColor(focused ? "Tree.selectionForeground" : "Tree.selectionInactiveForeground");
-    return foreground != null ? foreground : getTreeForeground();
+    return JBUI.CurrentTheme.Tree.Selection.foreground(focused);
   }
 
+  /**
+   * @see RenderingUtil#getForeground(JTree, boolean)
+   */
   public static @NotNull Color getTreeForeground(boolean selected, boolean focused) {
     return !selected ? getTreeForeground() : getTreeSelectionForeground(focused);
   }
@@ -3318,14 +3280,23 @@ public final class UIUtil {
     return getTreeSelectionForeground(true);
   }
 
+  /**
+   * @see RenderingUtil#getBackground(JTable)
+   */
   public static @NotNull Color getTableBackground() {
-    return TABLE_BACKGROUND;
+    return JBUI.CurrentTheme.Table.BACKGROUND;
   }
 
+  /**
+   * @see RenderingUtil#getSelectionBackground(JTable)
+   */
   public static @NotNull Color getTableSelectionBackground(boolean focused) {
-    return focused ? FocusedSelection.TABLE_BACKGROUND : UnfocusedSelection.TABLE_BACKGROUND;
+    return JBUI.CurrentTheme.Table.Selection.background(focused);
   }
 
+  /**
+   * @see RenderingUtil#getBackground(JTable, boolean)
+   */
   public static @NotNull Color getTableBackground(boolean selected, boolean focused) {
     return !selected ? getTableBackground() : getTableSelectionBackground(focused);
   }
@@ -3354,22 +3325,25 @@ public final class UIUtil {
     return getTableSelectionBackground(false);
   }
 
-  @ApiStatus.Experimental
-  public static @NotNull Color getTableHoverBackground(boolean focused) {
-    return focused ? FocusedHover.TABLE_BACKGROUND : UnfocusedHover.TABLE_BACKGROUND;
-  }
-
   // foreground
 
+  /**
+   * @see RenderingUtil#getForeground(JTable)
+   */
   public static @NotNull Color getTableForeground() {
-    return UIManager.getColor("Table.foreground");
+    return JBUI.CurrentTheme.Table.FOREGROUND;
   }
 
+  /**
+   * @see RenderingUtil#getSelectionForeground(JTable)
+   */
   public static @NotNull Color getTableSelectionForeground(boolean focused) {
-    Color foreground = UIManager.getColor(focused ? "Table.selectionForeground" : "Table.selectionInactiveForeground");
-    return foreground != null ? foreground : getTreeForeground();
+    return JBUI.CurrentTheme.Table.Selection.foreground(focused);
   }
 
+  /**
+   * @see RenderingUtil#getForeground(JTable, boolean)
+   */
   public static @NotNull Color getTableForeground(boolean selected, boolean focused) {
     return !selected ? getTableForeground() : getTableSelectionForeground(focused);
   }
@@ -3387,7 +3361,7 @@ public final class UIUtil {
    */
   @Deprecated
   public static @NotNull Color getTableSelectionForeground() {
-    return UIManager.getColor("Table.selectionForeground");
+    return getTableSelectionForeground(true);
   }
 
   /**

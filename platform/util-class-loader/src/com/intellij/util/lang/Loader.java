@@ -6,6 +6,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * An object responsible for loading classes and resources from a particular classpath element: a jar or a directory.
@@ -13,9 +15,13 @@ import java.nio.file.Path;
  * @see JarLoader
  * @see FileLoader
  */
-abstract class Loader {
+public abstract class Loader {
+  public enum Attribute {
+    SPEC_TITLE, SPEC_VERSION, SPEC_VENDOR, CLASS_PATH, IMPL_TITLE, IMPL_VERSION, IMPL_VENDOR
+  }
+
   final @NotNull Path path;
-  private ClasspathCache.NameFilter loadingFilter;
+  private Predicate<String> nameFilter;
 
   Loader(@NotNull Path path) {
     this.path = path;
@@ -23,17 +29,22 @@ abstract class Loader {
 
   abstract @Nullable Resource getResource(@NotNull String name);
 
-  abstract @NotNull ClasspathCache.LoaderData buildData() throws IOException;
+  public abstract Map<Loader.Attribute, String> getAttributes() throws IOException;
+
+  abstract @Nullable Class<?> findClass(String fileName, String className, ClassPath.ClassDataConsumer classConsumer) throws IOException;
+
+  abstract @NotNull ClasspathCache.IndexRegistrar buildData() throws IOException;
 
   final boolean containsName(@NotNull String name, @NotNull String shortName) {
     if (name.isEmpty()) {
       return true;
     }
-    ClasspathCache.NameFilter filter = loadingFilter;
-    return filter == null || filter.maybeContains(shortName);
+
+    Predicate<String> filter = nameFilter;
+    return filter == null || filter.test(shortName);
   }
 
-  final void applyData(@NotNull ClasspathCache.LoaderData loaderData) {
-    loadingFilter = loaderData.getNameFilter();
+  final void setNameFilter(@NotNull Predicate<String> filter) {
+    nameFilter = filter;
   }
 }

@@ -724,6 +724,11 @@ public abstract class IntroduceVariableBase extends IntroduceHandlerBase {
           }
           JavaReplaceChoice finalChoice = settings.getReplaceChoice();
           PsiExpression[] selectedOccurrences = finalChoice.filter(occurrenceManager);
+          if (selectedOccurrences.length == 0) {
+            showErrorMessage(project, editor, JavaRefactoringBundle.message("introduce.variable.no.matching.occurrences"));
+            wasSucceed = false;
+            return;
+          }
           final PsiElement chosenAnchor = getAnchor(selectedOccurrences);
           if (chosenAnchor == null) {
             String text = file.getText();
@@ -828,7 +833,11 @@ public abstract class IntroduceVariableBase extends IntroduceHandlerBase {
     if (anchorStatement == null) {
       PsiField field = PsiTreeUtil.getParentOfType(place, PsiField.class, true, PsiStatement.class);
       if (field != null && !(field instanceof PsiEnumConstant)) {
-        anchorStatement = field.getInitializer();
+        PsiExpression initializer = field.getInitializer();
+        // Could be also an annotation argument
+        if (PsiTreeUtil.isAncestor(initializer, place, false)) {
+          anchorStatement = initializer;
+        }
       }
     }
     return anchorStatement;
@@ -1258,14 +1267,17 @@ public abstract class IntroduceVariableBase extends IntroduceHandlerBase {
         }
       } else {
         occurrencesMap.put(JavaReplaceChoice.NO, Collections.singletonList(expr));
-        if (myHasWriteAccess && !myCantReplaceAllButWrite) {
+        boolean hasWrite = myHasWriteAccess && !myCantReplaceAllButWrite;
+        if (hasWrite && !myNonWrite.isEmpty()) {
           occurrencesMap.put(JavaReplaceChoice.NO_WRITE, myNonWrite);
         }
 
         if (myOccurrences.size() > 1 && !myCantReplaceAll) {
-          if (occurrencesMap.containsKey(JavaReplaceChoice.NO_WRITE)) {
+          if (hasWrite) {
             JavaReplaceChoice choice = new JavaReplaceChoice(
-              ReplaceChoice.ALL, JavaRefactoringBundle.message("replace.all.read.and.write"), false);
+              ReplaceChoice.ALL, 
+              myNonWrite.isEmpty() ? JavaRefactoringBundle.message("replace.all.occurrences.changes.semantics", myOccurrences.size()) 
+              : JavaRefactoringBundle.message("replace.all.read.and.write"), false);
             occurrencesMap.put(choice, myOccurrences);
           }
           else {

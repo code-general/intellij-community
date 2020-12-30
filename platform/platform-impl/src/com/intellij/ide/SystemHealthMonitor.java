@@ -4,6 +4,7 @@ package com.intellij.ide;
 import com.intellij.diagnostic.VMOptions;
 import com.intellij.execution.process.UnixProcessManager;
 import com.intellij.ide.actions.EditCustomVmOptionsAction;
+import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.jna.JnaLoader;
 import com.intellij.notification.*;
@@ -22,6 +23,7 @@ import com.intellij.util.MathUtil;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.system.CpuArch;
 import com.sun.jna.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,7 +47,7 @@ final class SystemHealthMonitor extends PreloadingActivity {
   private static final Logger LOG = Logger.getInstance(SystemHealthMonitor.class);
 
   private static final String DISPLAY_ID = "System Health";
-  private static final int MIN_RESERVED_CODE_CACHE_SIZE = 240;
+  private static final int MIN_RESERVED_CODE_CACHE_SIZE = PluginManagerCore.isRunningFromSources() ? 240 : CpuArch.CURRENT.width == 32 ? 384 : 512;
 
   @Override
   public void preload(@NotNull ProgressIndicator indicator) {
@@ -89,7 +91,7 @@ final class SystemHealthMonitor extends PreloadingActivity {
         JdkBundle bundledJre = JdkBundle.createBundled();
         if (bundledJre != null && bundledJre.isOperational()) {
           String appName = ApplicationNamesInfo.getInstance().getProductName().toLowerCase(Locale.ENGLISH);
-          String configName = appName + (!SystemInfo.isWindows ? "" : SystemInfo.is64Bit ? "64.exe" : ".exe") + ".jdk";
+          String configName = appName + (!SystemInfo.isWindows ? "" : CpuArch.isIntel64() ? "64.exe" : ".exe") + ".jdk";
           Path configFile = Paths.get(PathManager.getConfigPath(), configName);
           if (Files.isRegularFile(configFile)) {
             switchAction = new NotificationAction(IdeBundle.message("action.SwitchToJBR.text")) {

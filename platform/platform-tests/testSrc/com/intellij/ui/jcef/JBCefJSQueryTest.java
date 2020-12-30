@@ -3,7 +3,7 @@ package com.intellij.ui.jcef;
 
 import com.intellij.application.options.RegistryManager;
 import com.intellij.testFramework.ApplicationRule;
-import com.intellij.util.ui.TestScaleHelper;
+import com.intellij.ui.scale.TestScaleHelper;
 import junit.framework.TestCase;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
@@ -52,7 +52,7 @@ public class JBCefJSQueryTest {
     TestScaleHelper.assumeStandalone();
 
     test(client -> {
-      client.addProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, 1);
+      client.setProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, 1);
       return null;
     });
   }
@@ -70,7 +70,7 @@ public class JBCefJSQueryTest {
     TestScaleHelper.assumeStandalone();
 
     test(client -> {
-      client.addProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, Integer.MAX_VALUE); // stress test
+      client.setProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, Integer.MAX_VALUE); // stress test
       return null;
     });
   }

@@ -23,9 +23,9 @@ import org.jetbrains.plugins.github.api.util.SimpleGHGQLPagesLoader
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccountInformationProvider
 import org.jetbrains.plugins.github.i18n.GithubBundle
-import org.jetbrains.plugins.github.pullrequest.avatars.CachingGithubAvatarIconsProvider
 import org.jetbrains.plugins.github.pullrequest.data.service.*
 import org.jetbrains.plugins.github.pullrequest.search.GHPRSearchQueryHolderImpl
+import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.util.*
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
@@ -140,15 +140,13 @@ internal class GHPRDataContextRepository(private val project: Project) {
     val repoDataService = GHPRRepositoryDataServiceImpl(ProgressManager.getInstance(), requestExecutor, account.server,
                                                         apiRepositoryPath, repoOwner)
 
-    val avatarIconsProviderFactory = CachingGithubAvatarIconsProvider.Factory(CachingGithubUserAvatarLoader.getInstance(),
-                                                                              GithubImageResizer.getInstance(),
-                                                                              requestExecutor)
+    val avatarIconsProvider = GHAvatarIconsProvider(CachingGHUserAvatarLoader.getInstance(), requestExecutor)
 
     val filesManager = GHPRFilesManagerImpl(project, parsedRepositoryCoordinates)
 
     indicator.checkCanceled()
     return GHPRDataContext(parsedRepositoryCoordinates, remoteCoordinates, searchHolder, listLoader, listUpdatesChecker,
-                           dataProviderRepository, securityService, repoDataService, avatarIconsProviderFactory, filesManager)
+                           dataProviderRepository, securityService, repoDataService, avatarIconsProvider, filesManager)
   }
 
   @RequiresEdt
