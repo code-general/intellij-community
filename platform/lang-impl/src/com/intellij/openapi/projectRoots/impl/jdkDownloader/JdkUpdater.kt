@@ -15,10 +15,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectBundle
 import com.intellij.openapi.projectRoots.JavaSdkType
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.projectRoots.impl.DependentSdkType
-import com.intellij.openapi.projectRoots.impl.UnknownSdkCollector
-import com.intellij.openapi.projectRoots.impl.UnknownSdkContributor
-import com.intellij.openapi.projectRoots.impl.UnknownSdkTrackerQueue
+import com.intellij.openapi.projectRoots.impl.*
 import com.intellij.openapi.roots.ModuleRootEvent
 import com.intellij.openapi.roots.ModuleRootListener
 import com.intellij.openapi.roots.ProjectRootManager
@@ -63,6 +60,9 @@ internal class JdkUpdaterStartup : StartupActivity.Background {
 }
 
 private val LOG = logger<JdkUpdatesCollector>()
+
+@Service // project
+private class JdkUpdatesCollectorQueue : UnknownSdkCollectorQueue(7_000)
 
 @Service
 internal class JdkUpdatesCollector(
@@ -120,7 +120,7 @@ internal class JdkUpdatesCollector(
   fun updateNotifications() {
     if (!isEnabled()) return
 
-    UnknownSdkTrackerQueue.getInstance(project).queue { updateNotificationsDebounced() }
+    project.service<JdkUpdatesCollectorQueue>().queue { updateNotificationsDebounced() }
   }
 
   private fun updateNotificationsDebounced() {
@@ -158,7 +158,6 @@ internal class JdkUpdatesCollector(
       JdkListDownloader
         .getInstance()
         .downloadModelForJdkInstaller(progress = indicator)
-        .associateBy { it.suggestedSdkName }
     }
 
     val notifications = service<JdkUpdaterNotifications>()
@@ -168,7 +167,9 @@ internal class JdkUpdatesCollector(
 
     for (jdk in jdksToTest) {
       val actualItem = JdkInstaller.getInstance().findJdkItemForInstalledJdk(jdk.homePath) ?: continue
-      val feedItem = jdkFeed[actualItem.suggestedSdkName] ?: continue
+      val feedItem = jdkFeed.firstOrNull {
+        it.suggestedSdkName == actualItem.suggestedSdkName && it.arch == actualItem.arch
+      } ?: continue
 
       if (!service<JdkUpdaterState>().isAllowed(jdk, feedItem)) continue
 

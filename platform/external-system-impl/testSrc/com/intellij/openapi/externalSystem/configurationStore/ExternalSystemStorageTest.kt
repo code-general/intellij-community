@@ -57,9 +57,11 @@ import org.junit.Before
 import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.*
 
 class ExternalSystemStorageTest {
   companion object {
@@ -418,6 +420,16 @@ class ExternalSystemStorageTest {
     }
   }
 
+  @Test
+  fun `clean up external_build_system at saving data at idea folder`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("singleModuleWithLibrariesInInternalStorage", "singleModuleWithLibrariesInInternalStorage") { project ->
+      ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(true)
+      runBlocking { project.stateStore.save() }
+      ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(false)
+    }
+  }
+
   @Before
   fun registerFacetType() {
     WriteAction.runAndWait<RuntimeException> {
@@ -484,7 +496,7 @@ class ExternalSystemStorageTest {
       cacheDir.toFile().assertMatches(directoryContentOf(expectedCacheDir), FileTextMatcher.ignoreBlankLines())
     }
     else {
-      assertFalse("$cacheDir doesn't exist", Files.exists(cacheDir))
+      assertTrue("$cacheDir doesn't exist", !Files.exists(cacheDir) || isFolderWithoutFiles(cacheDir.toFile()))
     }
   }
 
@@ -523,4 +535,6 @@ class ExternalSystemStorageTest {
       }
     }
   }
+
+  private fun isFolderWithoutFiles(root: File): Boolean = root.walk().none { it.isFile }
 }

@@ -236,7 +236,7 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
    * [simpleClasses] - set of classes
    * [objectClasses] - set of kotlin objects
    */
-  private fun recursiveClassFinder(kryo: Kryo, entity: Any, simpleClasses: MutableSet<TypeInfo>, objectClasses: MutableSet<TypeInfo>) {
+  private fun recursiveClassFinder(kryo: Kryo, entity: Any, simpleClasses: MutableMap<TypeInfo, Class<out Any>>, objectClasses: MutableMap<TypeInfo, Class<out Any>>) {
     val jClass = entity.javaClass
     val classAlreadyRegistered = registerKClass(entity::class, jClass, kryo, objectClasses, simpleClasses)
     if (classAlreadyRegistered) return
@@ -280,17 +280,17 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
   private fun registerKClass(kClass: KClass<out Any>,
                              jClass: Class<out Any>,
                              kryo: Kryo,
-                             objectClasses: MutableSet<TypeInfo>,
-                             simpleClasses: MutableSet<TypeInfo>): Boolean {
+                             objectClasses: MutableMap<TypeInfo, Class<out Any>>,
+                             simpleClasses: MutableMap<TypeInfo, Class<out Any>>): Boolean {
     val typeInfo = TypeInfo(jClass.name, typesResolver.getPluginId(jClass))
     if (kryo.classResolver.getRegistration(jClass) != null) return true
 
     val objectInstance = kClass.objectInstance
     if (objectInstance != null) {
-      objectClasses += typeInfo
+      objectClasses[typeInfo] = jClass
     }
     else {
-      simpleClasses += typeInfo
+      simpleClasses[typeInfo] = jClass
     }
     return false
   }
@@ -392,69 +392,73 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
                                         output: Output,
                                         entityDataSequence: Sequence<WorkspaceEntityData<*>>) {
     // Collect all classes existing in entity data
-    val simpleClasses = HashSet<TypeInfo>()
-    val objectClasses = HashSet<TypeInfo>()
+    val simpleClasses = HashMap<TypeInfo, Class<out Any>>()
+    val objectClasses = HashMap<TypeInfo, Class<out Any>>()
     entityDataSequence.forEach { recursiveClassFinder(kryo, it, simpleClasses, objectClasses) }
 
     // Serialize and register types of kotlin objects
     output.writeVarInt(objectClasses.size, true)
     objectClasses.forEach {
-      kryo.register(typesResolver.resolveClass(it.name, it.pluginId))
-      kryo.writeClassAndObject(output, it)
+      kryo.register(it.value)
+      kryo.writeClassAndObject(output, it.key)
     }
 
     // Serialize and register all types existing in entity data
     output.writeVarInt(simpleClasses.size, true)
     simpleClasses.forEach {
-      kryo.register(typesResolver.resolveClass(it.name, it.pluginId))
-      kryo.writeClassAndObject(output, it)
+      kryo.register(it.value)
+      kryo.writeClassAndObject(output, it.key)
     }
   }
 
   override fun deserializeCache(stream: InputStream): WorkspaceEntityStorageBuilder? {
-    Input(stream, KRYO_BUFFER_SIZE).use { input ->
+    return Input(stream, KRYO_BUFFER_SIZE).use { input ->
       val kryo = createKryo()
 
-      // Read version
-      val cacheVersion = input.readString()
-      if (cacheVersion != serializerDataFormatVersion) {
-        logger.info("Cache isn't loaded. Current version of cache: $serializerDataFormatVersion, version of cache file: $cacheVersion")
-        return null
+      try { // Read version
+        val cacheVersion = input.readString()
+        if (cacheVersion != serializerDataFormatVersion) {
+          logger.info("Cache isn't loaded. Current version of cache: $serializerDataFormatVersion, version of cache file: $cacheVersion")
+          return null
+        }
+
+        readAndRegisterClasses(input, kryo)
+
+        // Read and register persistent ids
+        val persistentIdCount = input.readVarInt(true)
+        repeat(persistentIdCount) {
+          val objectClass = kryo.readClassAndObject(input) as TypeInfo
+          kryo.register(typesResolver.resolveClass(objectClass.name, objectClass.pluginId))
+        }
+
+        // Read entity data and references
+        val entitiesBarrel = kryo.readClassAndObject(input) as ImmutableEntitiesBarrel
+        val refsTable = kryo.readClassAndObject(input) as RefsTable
+
+        // Read indexes
+        val softLinks = kryo.readClassAndObject(input) as MultimapStorageIndex
+
+        val entityId2VirtualFileUrlInfo = kryo.readClassAndObject(input) as HashMap<EntityId, MutableSet<VirtualFileIndex.VirtualFileUrlInfo>>
+        val vfu2VirtualFileUrlInfo = kryo.readClassAndObject(input) as HashMap<VirtualFileUrl, MutableSet<VirtualFileIndex.VirtualFileUrlInfo>>
+        val virtualFileIndex = VirtualFileIndex(entityId2VirtualFileUrlInfo, vfu2VirtualFileUrlInfo)
+
+        val entitySourceIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<EntitySource>
+        val persistentIdIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<PersistentEntityId<*>>
+        val storageIndexes = StorageIndexes(softLinks, virtualFileIndex, entitySourceIndex, persistentIdIndex)
+
+
+        val storage = WorkspaceEntityStorageImpl(entitiesBarrel, refsTable, storageIndexes)
+        val builder = WorkspaceEntityStorageBuilderImpl.from(storage)
+
+        builder.entitiesByType.entityFamilies.forEach { family ->
+          family?.entities?.asSequence()?.filterNotNull()?.forEach { entityData -> builder.createAddEvent(entityData) }
+        }
+
+        builder
       }
-
-      readAndRegisterClasses(input, kryo)
-
-      // Read and register persistent ids
-      val persistentIdCount = input.readVarInt(true)
-      repeat(persistentIdCount) {
-        val objectClass = kryo.readClassAndObject(input) as TypeInfo
-        kryo.register(typesResolver.resolveClass(objectClass.name, objectClass.pluginId))
+      catch (e: Exception) {
+        null
       }
-
-      // Read entity data and references
-      val entitiesBarrel = kryo.readClassAndObject(input) as ImmutableEntitiesBarrel
-      val refsTable = kryo.readClassAndObject(input) as RefsTable
-
-      // Read indexes
-      val softLinks = kryo.readClassAndObject(input) as MultimapStorageIndex
-
-      val entityId2VirtualFileUrlInfo = kryo.readClassAndObject(input) as HashMap<EntityId, MutableSet<VirtualFileIndex.VirtualFileUrlInfo>>
-      val vfu2VirtualFileUrlInfo = kryo.readClassAndObject(input) as HashMap<VirtualFileUrl, MutableSet<VirtualFileIndex.VirtualFileUrlInfo>>
-      val virtualFileIndex = VirtualFileIndex(entityId2VirtualFileUrlInfo, vfu2VirtualFileUrlInfo)
-
-      val entitySourceIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<EntitySource>
-      val persistentIdIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<PersistentEntityId<*>>
-      val storageIndexes = StorageIndexes(softLinks, virtualFileIndex, entitySourceIndex, persistentIdIndex)
-
-
-      val storage = WorkspaceEntityStorageImpl(entitiesBarrel, refsTable, storageIndexes)
-      val builder = WorkspaceEntityStorageBuilderImpl.from(storage)
-
-      builder.entitiesByType.entityFamilies.forEach { family ->
-        family?.entities?.asSequence()?.filterNotNull()?.forEach { entityData -> builder.createAddEvent(entityData) }
-      }
-
-      return builder
     }
   }
 
